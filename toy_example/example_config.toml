@@ -1,0 +1,59 @@
+[scheduler]
+max_concurrent_experiments = 1          # 最大并发实验数
+check_interval = 5                      # 调度循环中检查任务状态的时间间隔(秒)
+base_experiment_dir = "./experiments"   # 全局实验输出根目录（必填）
+auto_restart_on_error = true            # 是否允许自动重启失败任务
+
+# --- 实验配置示例 ---------------------------------------------------------
+# [[experiments]]                       # 数组表，每次出现表示一组新的实验配置
+# name = "exp_name"                     # [必填] 实验名称
+# command = "python train.py"           # [必填] 执行命令
+# tags = ["tag1", "tag2"]              # [可选] 标签列表
+# gpu_ids = [0, 1]                       # [可选] 指定使用哪些 GPU，留空则不限制
+# cwd = "./"                            # [可选] 运行命令的工作目录, 默认为 config 文件所在目录
+# base_dir = "./custom_output"          # [可选] 覆盖该实验输出目录，默认用 scheduler.base_experiment_dir
+# description = "用自然语言记录本次实验的目标"  # [可选] 实验描述
+# environment = { KEY = "VALUE" }       # [可选] 注入到子进程的环境变量
+# resume = "2025-09-27__17-16-19"       # [可选] 指定已有实验目录以断点续跑
+# repeats = 3                            # [可选] 重复运行次数，默认 1
+# max_retries = 2                        # [可选] 自动重试次数，0 表示不重试（auto_restart_on_error = true 时该参数生效）
+# delay_seconds = 5.0                    # [可选] 启动前的延迟（秒）
+# ------------------------------------------------------------------------
+
+# 实际实验定义
+[[experiments]]
+name = "cnn_small"
+command = "python simple_cnn_train.py --epochs 1 --batch-size 256"
+tags = ["cnn", "demo"]
+cwd = "."
+priority = 10
+repeats = 1
+description = "基础 CNN 配置，用于 sanity check"
+
+[experiments.environment]
+PYTHONUNBUFFERED = "1"
+
+[[experiments]]
+name = "cnn_alt_lr"
+command = "python simple_cnn_train.py --epochs 1 --batch-size 256 --lr 0.0005"
+tags = ["cnn", "demo"]
+cwd = "."
+priority = 5
+repeats = 1
+description = "学习率 5e-4 的对照实验"
+
+[experiments.environment]
+PYTHONUNBUFFERED = "1"
+
+[[experiments]]
+name = "cnn_repeat"
+command = "python simple_cnn_train.py --epochs 1 --batch-size 256 --lr 0.0001"
+tags = ["cnn", "repeat"]
+cwd = "."
+priority = 1
+repeats = 2
+max_retries = 1
+description = "重复两次验证重试与重复逻辑"
+
+[experiments.environment]
+PYTHONUNBUFFERED = "1"

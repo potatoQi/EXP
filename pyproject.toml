@@ -1,0 +1,9 @@
+[project]
+name = "experiment-manager"
+version = "0.1.0"
+description = "实验管理框架"
+requires-python = ">=3.8"
+dependencies = [
+    "toml>=0.10.2",
+    "psutil>=5.8.0",
+]
