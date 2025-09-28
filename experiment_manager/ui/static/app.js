@@ -290,7 +290,7 @@ function createTaskItem(section, item) {
     } finally {
       setTimeout(() => {
         deleteBtn.disabled = false;
-      }, 800);
+      }, 300);
     }
   }, "danger");
   actions.appendChild(deleteBtn);
@@ -304,7 +304,7 @@ function createTaskItem(section, item) {
       } finally {
         setTimeout(() => {
           retryBtn.disabled = false;
-        }, 800);
+        }, 300);
       }
     }, "warning");
     actions.appendChild(retryBtn);
@@ -383,8 +383,14 @@ async function sendCommand(action, payload) {
       body: JSON.stringify({ action, payload }),
     });
     if (!res.ok) throw new Error(await res.text());
+    
+    // 立即刷新状态以提供更快反馈
+    setTimeout(refreshState, 100);
   } catch (err) {
-    console.error(err);
+    console.error("Command error:", err);
+    // 显示错误提示
+    const errorMsg = `命令执行失败: ${err.message}`;
+    console.warn(errorMsg);
   }
 }
 
@@ -644,14 +650,30 @@ function startLogStream(panel, taskId, runId) {
     }
   };
 
-  socket.onclose = () => {
+  socket.onopen = () => {
     if (!logPanels.has(taskId)) return;
-    panel.status.textContent = "连接已关闭";
+    panel.status.textContent = "已连接";
   };
 
-  socket.onerror = () => {
+  socket.onclose = (event) => {
     if (!logPanels.has(taskId)) return;
-    panel.status.textContent = "连接错误";
+    if (event.code === 1000) {
+      panel.status.textContent = "连接正常关闭";
+    } else {
+      panel.status.textContent = `连接关闭 (${event.code})`;
+      // 如果是异常关闭，尝试重连
+      setTimeout(() => {
+        if (logPanels.has(taskId) && (!panel.socket || panel.socket.readyState === WebSocket.CLOSED)) {
+          startLogStream(panel, taskId, runId);
+        }
+      }, 2000);
+    }
+  };
+
+  socket.onerror = (error) => {
+    if (!logPanels.has(taskId)) return;
+    panel.status.textContent = "WebSocket连接错误，将使用HTTP轮询";
+    console.warn("WebSocket error for task", taskId, error);
   };
 }
 
@@ -677,7 +699,7 @@ function createLogPanel(record, section) {
     } finally {
       setTimeout(() => {
         deleteBtn.disabled = false;
-      }, 800);
+      }, 300);
     }
   }, "danger");
   const retryBtn = createIconButton("↻", "重跑任务", async () => {
@@ -688,7 +710,7 @@ function createLogPanel(record, section) {
     } finally {
       setTimeout(() => {
         retryBtn.disabled = false;
-      }, 800);
+      }, 300);
     }
   }, "warning");
   retryBtn.classList.add("hidden");

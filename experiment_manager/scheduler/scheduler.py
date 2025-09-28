@@ -68,7 +68,7 @@ class ExperimentScheduler:
         self.config_manager = ConfigManager(self.config_path)   # 配置对象
         scheduler_cfg = self.config_manager.get_scheduler_config()  # 调度器配置
         self.max_concurrent = int(scheduler_cfg.get("max_concurrent_experiments", 1))   # 最大并发实验数
-        self.check_interval = float(scheduler_cfg.get("check_interval", 10))    # 状态检查间隔
+        self.check_interval = float(scheduler_cfg.get("check_interval", 1))    # 状态检查间隔 (降低到1秒提升响应性)
         base_dir_value = scheduler_cfg.get("base_experiment_dir")
         if not base_dir_value or not str(base_dir_value).strip():
             raise ValueError("配置项 scheduler.base_experiment_dir 为必填，请在配置文件中显式指定")
@@ -521,12 +521,29 @@ class ExperimentScheduler:
                 continue
             runtime = slot["experiment"]
             process = runtime["process"]
+            
+            # 更强力的进程终止逻辑
+            print(f"🛑 开始终止运行任务 {task_id} (PID: {process.pid})")
+            
+            # 首先尝试友好终止
             process.terminate()
             try:
-                process.wait(timeout=10)
+                process.wait(timeout=5)
+                print(f"🛑 任务 {task_id} 已友好终止")
             except Exception:
+                # 友好终止失败，强制终止
+                print(f"🛑 友好终止失败，强制终止任务 {task_id}")
                 process.kill()
+                try:
+                    process.wait(timeout=3)
+                    print(f"🛑 任务 {task_id} 已强制终止")
+                except Exception:
+                    print(f"⚠️  任务 {task_id} 终止可能不完整")
+            
+            # 设置实验实例错误状态        
             runtime["instance"].set_error("terminated by user")
+            
+            # 将任务移到完成列表
             self._finished.append(
                 {
                     "config": slot["config"],
@@ -542,7 +559,7 @@ class ExperimentScheduler:
                 }
             )
             self._active.remove(slot)
-            print(f"🛑 用户终止运行任务 {task_id}")
+            print(f"🛑 用户终止运行任务 {task_id} 已完成")
             break
 
     def _handle_retry_error(self, payload: Dict[str, Any]) -> None:
