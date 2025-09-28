@@ -21,10 +21,10 @@ body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
-  min-height: 100vh;
+  height: 100vh; /* Use viewport height for strict height constraint */
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Removed overflow: hidden to allow proper scrolling */
 }
 
 .app-toolbar {
@@ -512,12 +512,21 @@ button.active {
   display: none !important;
 }
 
+#query-interface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; /* Essential for proper flexbox scrolling */
+  height: 100%; /* Ensure full height */
+}
+
 /* Query Interface */
 .query-layout {
   display: flex;
   flex: 1;
   min-height: 0;
   width: 100%;
+  height: 100%; /* Ensure containers have defined height */
 }
 
 .query-filters {
@@ -605,6 +614,8 @@ button.active {
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--bg-highlight);
+  height: 100%; /* Ensure full container height */
+  min-height: 0; /* Enable flex child to shrink */
 }
 
 .results-header {
@@ -616,6 +627,7 @@ button.active {
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
+  flex-shrink: 0; /* Prevent header from shrinking and taking space from content */
 }
 
 .results-header h2 {
