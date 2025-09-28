@@ -61,6 +61,103 @@ body {
   gap: 8px;
 }
 
+.scheduler-control {
+  gap: 10px;
+}
+
+.scheduler-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.6);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.scheduler-status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  box-shadow: 0 0 6px rgba(148, 163, 184, 0.6);
+}
+
+.scheduler-status--running {
+  color: var(--success);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.scheduler-status--running::before {
+  background: var(--success);
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
+}
+
+.scheduler-status--awaiting {
+  color: var(--warning);
+  border-color: rgba(250, 204, 21, 0.5);
+}
+
+.scheduler-status--awaiting::before {
+  background: var(--warning);
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.8);
+}
+
+.scheduler-status--stopped {
+  color: var(--text-secondary);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.scheduler-status--stopped::before {
+  background: rgba(148, 163, 184, 0.7);
+  box-shadow: none;
+}
+
+.scheduler-status--error {
+  color: var(--error);
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.scheduler-status--error::before {
+  background: var(--error);
+  box-shadow: 0 0 8px rgba(248, 113, 113, 0.8);
+}
+
+.scheduler-btn {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: var(--accent);
+  transition: background 0.2s ease, color 0.2s ease, border 0.2s ease;
+}
+
+.scheduler-btn:hover {
+  background: rgba(56, 189, 248, 0.25);
+}
+
+.scheduler-btn.scheduler-btn--danger {
+  background: rgba(248, 113, 113, 0.18);
+  border-color: rgba(248, 113, 113, 0.5);
+  color: var(--error);
+}
+
+.scheduler-btn.scheduler-btn--danger:hover {
+  background: rgba(248, 113, 113, 0.3);
+}
+
+.scheduler-btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .hidden {
   display: none !important;
 }

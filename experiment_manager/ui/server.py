@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, 
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .service import SchedulerUISession
+from experiment_manager.ui.service import SchedulerUISession
 
 
 def create_app(session: SchedulerUISession) -> FastAPI:

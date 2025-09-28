@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import pandas as pd
 from experiment_manager.core.status import ExperimentStatus
+from zoneinfo import ZoneInfo
+
+
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
 
 class Experiment:
     """实验管理类"""
@@ -64,7 +68,9 @@ class Experiment:
             if tags is None:
                 self.tags = resume_exp.tags
         else:
-            self.timestamp = datetime.now()         # 实验创建时间戳
+            self.timestamp = datetime.now(LOCAL_TZ)         # 实验创建时间戳
+            if self.timestamp.tzinfo is None:
+                self.timestamp = self.timestamp.replace(tzinfo=LOCAL_TZ)
             self.status = ExperimentStatus.PENDING  # 实验状态
             timestamp_str = self.timestamp.strftime("%Y-%m-%d__%H-%M-%S")
             self.work_dir = self.base_dir / f"{self.name}_{timestamp_str}"
@@ -137,7 +143,7 @@ class Experiment:
             "name": self.name,
             "command": self.command,
             "tags": self.tags,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.astimezone(LOCAL_TZ).isoformat(),
             "status": self.status.value,
             "pid": self.pid,
             "gpu_ids": self.gpu_ids,
@@ -279,6 +285,25 @@ class Experiment:
         
         # 启动进程
         try:
+            popen_kwargs = dict(
+                shell=True,
+                cwd=execution_cwd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                bufsize=0,
+            )
+
+            if os.name != "nt":
+                # 在 POSIX 系统中创建新的会话，确保进程组可以被整体终止
+                popen_kwargs["preexec_fn"] = os.setsid
+            else:  # pragma: no cover - Windows 特殊逻辑
+                raise NotImplementedError("Windows 系统暂不支持实验运行")
+                creation_flags = popen_kwargs.get("creationflags", 0)
+                creation_flags |= getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                popen_kwargs["creationflags"] = creation_flags
+
             self.append_log(f"开始执行: {full_command}")
             self.append_log(f"执行目录: {execution_cwd}")
             if self.gpu_ids:
@@ -286,13 +311,7 @@ class Experiment:
             
             process = subprocess.Popen(
                 full_command,
-                shell=True,
-                cwd=execution_cwd,  # 使用自定义的工作目录
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,  # 分别捕获stderr
-                universal_newlines=True,
-                bufsize=0  # 无缓冲
+                **popen_kwargs,
             )
             
             # 标记为运行状态
@@ -393,7 +412,7 @@ class Experiment:
             run_id: 运行ID，默认使用当前运行ID
         """
         log_file = self.get_log_file_path(run_id)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S")
         
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(f"[{timestamp}] {content}\n")

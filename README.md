@@ -11,6 +11,8 @@
 - 🚀 **全自动配置**: GPU分配、目录创建、日志初始化
 - 📁 **智能组织**: 自动创建结构化的实验目录
 - 🔍 **向后兼容**: 支持旧的API，平滑升级
+- 🕒 **时区统一**: 所有时间戳默认写入上海时区，日志与UI时间一致
+- 🛎️ **手动关机面板**: 调度器空闲时保持在线，待 UI 触发“退出调度器”按钮后优雅收尾
 
 ## 🚀 快速开始
 
@@ -54,7 +56,7 @@ python run_scheduler.py --config example_config.toml
 `toy_example/long_running_config.toml` 预设 3 个耗时约 150/210/270 秒的任务，默认并发度为 2，可在面板中看到 Pending → Running → Finished 的流转。
 
 ```bash
-# 终端 ①：启动调度器，运行约 5 分钟
+# 终端 ①：启动调度器，运行约 5 分钟（完成后保持待命状态，等待 UI 指令）
 python toy_example/run_scheduler.py --config toy_example/long_running_config.toml
 
 # 终端 ②：启动 UI，观察 experiments_long_demo 目录
@@ -86,6 +88,9 @@ UI 页面提供以下能力：
 - 「监控」按钮打开实时日志面板（多窗口支持，提供分页切换与多列布局按钮）。
 - 在错误面板中可直接点击「重跑」触发 `retry_error` 命令；其他面板提供删除/终止操作。
 - 页面右上角可手动刷新，也会每 3 秒自动轮询最新状态。
+- 右上角状态胶囊会显示「运行中 / 等待关闭指令 / 已停止」；当调度器空闲后可点击「退出调度器」按钮，调度器会在后台写回最终状态后退出。
+
+> 📌 **提示**：调度器配置 `linger_when_idle` 默认为开启，所有任务完成后会保持监听状态，确保 UI/CLI 有时间下载日志或执行后续命令。若希望自动退出，可在 TOML 中将该配置设为 `false`。
 
 #### 核心API用法
 
@@ -262,4 +267,4 @@ plt.show()
 
 ## 📄 许可证
 
-MIT License
+本项目依据 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) 发布，欢迎自由使用、修改与再发行，但需保留版权与许可声明。

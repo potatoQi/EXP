@@ -17,11 +17,14 @@ import os
 import random
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, TextIO
+from zoneinfo import ZoneInfo
 
 DEFAULT_INTERVAL = 15
+
+SHANGHAI_TZ = ZoneInfo("Asia/Shanghai")
 
 
 def parse_args() -> argparse.Namespace:
@@ -109,7 +112,7 @@ def main() -> int:
 
             writer.writerow(
                 {
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).astimezone(SHANGHAI_TZ).isoformat(),
                     "run_id": run_id,
                     "workload": args.workload,
                     "step": step,

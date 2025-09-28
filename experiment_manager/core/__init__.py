@@ -4,7 +4,7 @@
 提供 Experiment 类和相关的状态管理功能
 """
 
-from .experiment import Experiment
-from .status import ExperimentStatus
+from experiment_manager.core.experiment import Experiment
+from experiment_manager.core.status import ExperimentStatus
 
 __all__ = ["Experiment", "ExperimentStatus"]

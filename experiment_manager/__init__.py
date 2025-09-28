@@ -7,8 +7,8 @@
 __version__ = "0.1.0"
 __author__ = "Research Team"
 
-from .core import Experiment, ExperimentStatus
-from .scheduler import ExperimentScheduler
+from experiment_manager.core import Experiment, ExperimentStatus
+from experiment_manager.scheduler import ExperimentScheduler
 
 __all__ = [
     "Experiment", 

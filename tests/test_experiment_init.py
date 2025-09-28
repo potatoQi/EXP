@@ -272,3 +272,21 @@ class TestExperimentInit:
         assert "分配GPU: [0, 1]" in log_content
         assert "实验描述: Test experiment" in log_content
         assert str(exp.work_dir) in log_content
+
+    def test_metadata_timestamp_uses_shanghai_timezone(self, temp_base_dir):
+        exp = Experiment(
+            name="tz_exp",
+            command="python train.py",
+            base_dir=temp_base_dir,
+        )
+
+        metadata_file = exp.work_dir / "metadata.json"
+        with open(metadata_file, "r", encoding="utf-8") as fh:
+            metadata = json.load(fh)
+
+        ts = metadata["timestamp"]
+        parsed = datetime.fromisoformat(ts)
+        assert parsed.tzinfo is not None
+        offset = parsed.utcoffset()
+        assert offset is not None
+        assert offset.total_seconds() == 8 * 3600

@@ -8,9 +8,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from datetime import datetime, timezone, timedelta
 
-from ..scheduler.state_store import ISO_TIMESTAMP, SchedulerCommand, SchedulerStateStore
+from experiment_manager.scheduler.state_store import (
+    SchedulerCommand,
+    SchedulerStateStore,
+)
 
 
 @dataclass
@@ -480,11 +482,11 @@ class SchedulerUISession:
 
     @staticmethod
     def _format_timestamp(value: float) -> str:
-        from datetime import datetime, timezone, timedelta
-        
-        # Use Asia/Shanghai timezone (UTC+8)
-        shanghai_tz = timezone(timedelta(hours=8))
-        return datetime.fromtimestamp(value, tz=shanghai_tz).strftime(ISO_TIMESTAMP)
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        shanghai_tz = ZoneInfo("Asia/Shanghai")
+        return datetime.fromtimestamp(value, tz=shanghai_tz).isoformat()
 
 
 __all__ = ["SchedulerUISession"]

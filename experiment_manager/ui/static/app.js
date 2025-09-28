@@ -9,8 +9,27 @@ let pollTimer = null;
 let activeTaskId = null;
 let refreshJob = null;
 const INFO_REFRESH_INTERVAL = 15000;
+let schedulerStatusEl = null;
+let shutdownButton = null;
 
 function setupControls() {
+  schedulerStatusEl = document.getElementById("scheduler-status");
+  shutdownButton = document.getElementById("shutdown-button");
+
+  if (shutdownButton) {
+    shutdownButton.addEventListener("click", async () => {
+      if (shutdownButton.disabled) return;
+      shutdownButton.disabled = true;
+      shutdownButton.textContent = "退出中...";
+      shutdownButton.classList.add("scheduler-btn--danger");
+      try {
+        await sendCommand("shutdown_scheduler", {});
+      } finally {
+        restartAutoRefresh();
+      }
+    });
+  }
+
   const refreshButton = document.getElementById("refresh-button");
   if (refreshButton) {
     refreshButton.addEventListener("click", () => {
@@ -119,6 +138,67 @@ function renderSummary(state) {
   const summary = state.summary || {};
   const text = `总数 ${summary.total ?? 0} · Pending ${summary.pending ?? 0} · Running ${summary.running ?? 0} · Finished ${summary.finished ?? 0} · Error ${summary.errors ?? 0}`;
   document.getElementById("summary").textContent = text;
+  updateSchedulerControls(summary);
+}
+
+function updateSchedulerControls(summary) {
+  if (schedulerStatusEl) {
+    const indicator = summary.status_indicator || "unknown";
+    const waiting = Boolean(summary.waiting_for_shutdown);
+    const shutdownRequested = Boolean(summary.shutdown_requested);
+
+    let statusClass = "scheduler-status--stopped";
+    let statusText = "状态未知";
+
+    if (indicator === "running") {
+      statusClass = "scheduler-status--running";
+      statusText = "运行中";
+    } else if (indicator === "awaiting_shutdown") {
+      statusClass = "scheduler-status--awaiting";
+      statusText = "等待关闭指令";
+    } else if (indicator === "stopped") {
+      statusClass = "scheduler-status--stopped";
+      statusText = shutdownRequested ? "已请求退出" : "已停止";
+    } else if (indicator === "error") {
+      statusClass = "scheduler-status--error";
+      statusText = "错误状态";
+    }
+
+    schedulerStatusEl.className = `scheduler-status ${statusClass}`;
+    schedulerStatusEl.textContent = statusText;
+  }
+
+  if (shutdownButton) {
+    const indicator = summary.status_indicator || "unknown";
+    const waiting = Boolean(summary.waiting_for_shutdown);
+    const shutdownRequested = Boolean(summary.shutdown_requested);
+    const canShutdown = indicator === "awaiting_shutdown" && waiting && !shutdownRequested;
+
+    let buttonLabel = "请求退出";
+    let buttonClass = "scheduler-btn";
+
+    if (shutdownRequested) {
+      buttonLabel = "退出中...";
+      shutdownButton.disabled = true;
+      buttonClass += " scheduler-btn--danger";
+    } else if (canShutdown) {
+      buttonLabel = "退出调度器";
+      shutdownButton.disabled = false;
+      buttonClass += " scheduler-btn--danger";
+    } else if (indicator === "running") {
+      buttonLabel = "运行中";
+      shutdownButton.disabled = true;
+    } else if (indicator === "stopped") {
+      buttonLabel = "已停止";
+      shutdownButton.disabled = true;
+    } else {
+      buttonLabel = "等待状态";
+      shutdownButton.disabled = true;
+    }
+
+    shutdownButton.textContent = buttonLabel;
+    shutdownButton.className = buttonClass;
+  }
 }
 
 function renderSections(state) {

@@ -9,8 +9,8 @@ from pathlib import Path
 
 import uvicorn
 
-from .server import create_app
-from .service import SchedulerUISession
+from experiment_manager.ui.server import create_app
+from experiment_manager.ui.service import SchedulerUISession
 
 DEFAULT_PORT = 6066
 

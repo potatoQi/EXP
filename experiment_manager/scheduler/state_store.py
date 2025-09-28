@@ -13,11 +13,19 @@ import json
 import os
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, MutableMapping, Optional
+from zoneinfo import ZoneInfo
 
-ISO_TIMESTAMP = "%Y-%m-%dT%H:%M:%S.%fZ"
+LOCAL_TZ = ZoneInfo("Asia/Shanghai")
+ISO_TIMESTAMP = "%Y-%m-%dT%H:%M:%S.%f%z"
+
+
+def _format_iso(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=LOCAL_TZ)
+    return dt.astimezone(LOCAL_TZ).isoformat()
 
 
 @dataclass
@@ -26,8 +34,8 @@ class SchedulerCommand:
 
     action: str
     payload: Dict[str, Any] = field(default_factory=dict)
-    id: str = field(default_factory=lambda: datetime.now(tz=timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M%S%f"))
-    created_at: str = field(default_factory=lambda: datetime.now(tz=timezone(timedelta(hours=8))).strftime(ISO_TIMESTAMP))
+    id: str = field(default_factory=lambda: datetime.now(tz=LOCAL_TZ).strftime("%Y%m%d%H%M%S%f"))
+    created_at: str = field(default_factory=lambda: _format_iso(datetime.now(tz=LOCAL_TZ)))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -70,7 +78,7 @@ class SchedulerStateStore:
         summary: Optional[Dict[str, Any]] = None,
     ) -> None:
         data = {
-            "updated_at": datetime.now(tz=timezone.utc).strftime(ISO_TIMESTAMP),
+            "updated_at": _format_iso(datetime.now(tz=LOCAL_TZ)),
             "pending": list(pending),
             "running": list(running),
             "finished": list(finished),
@@ -107,12 +115,21 @@ class SchedulerStateStore:
     # ------------------------------------------------------------------
     def _initial_state(self) -> Dict[str, Any]:
         return {
-            "updated_at": datetime.now(tz=timezone.utc).strftime(ISO_TIMESTAMP),
+            "updated_at": _format_iso(datetime.now(tz=LOCAL_TZ)),
             "pending": [],
             "running": [],
             "finished": [],
             "errors": [],
-            "summary": {},
+            "summary": {
+                "total": 0,
+                "pending": 0,
+                "running": 0,
+                "finished": 0,
+                "errors": 0,
+                "status_indicator": "stopped",
+                "waiting_for_shutdown": False,
+                "shutdown_requested": False,
+            },
         }
 
     def _read_json(self, path: Path) -> Any:
@@ -132,4 +149,4 @@ class SchedulerStateStore:
         os.replace(tmp_path, path)
 
 
-__all__ = ["SchedulerStateStore", "SchedulerCommand", "ISO_TIMESTAMP"]
+__all__ = ["SchedulerStateStore", "SchedulerCommand", "ISO_TIMESTAMP", "LOCAL_TZ"]

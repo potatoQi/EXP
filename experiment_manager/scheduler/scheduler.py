@@ -4,16 +4,19 @@
 """
 from __future__ import annotations
 
+import os
+import signal
+import subprocess
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from ..core import Experiment, ExperimentStatus
-from ..utils.config import ConfigManager
-from .state_store import ISO_TIMESTAMP, SchedulerStateStore
+from experiment_manager.core import Experiment, ExperimentStatus
+from experiment_manager.utils.config import ConfigManager
+from experiment_manager.scheduler.state_store import SchedulerStateStore, LOCAL_TZ
 
 
 @dataclass(order=True)
@@ -80,9 +83,11 @@ class ExperimentScheduler:
         self.auto_restart = bool(scheduler_cfg.get("auto_restart_on_error", False)) # 是否自动重启错误的实验
         self.linger_when_idle = bool(scheduler_cfg.get("linger_when_idle", True))   # 实验全部完成后是否继续等待 UI 操作命令
         self.idle_grace_period = float(scheduler_cfg.get("idle_grace_period", 30.0))    # UI 无操作时自动退出的时间上限
-        self._idle_cycle_grace = self._compute_idle_cycle_grace()   # 实验全部完成后会进行检查的次数 (检查完若一直没更新就退出)
 
         self.dry_run = dry_run
+        self._shutdown_requested = False
+        self._status_indicator = "running"
+        self._waiting_for_shutdown = False
 
         self._scheduled: List[ScheduledExperiment] = self._load_experiments_from_config()   # 加载所有组实验的配置
         self._pending: List[Dict[str, Any]] = []    # pending 列表
@@ -91,12 +96,6 @@ class ExperimentScheduler:
         self._task_counter = 0
 
         self.state_store = SchedulerStateStore(self.base_experiment_dir)
-
-    # 计算实验全部完成后等待 UI 操作的检查次数
-    def _compute_idle_cycle_grace(self) -> int:
-        interval = max(self.check_interval, 0.5)
-        cycles = int(self.idle_grace_period / interval)
-        return max(cycles, 2)
 
     # ------------------------------------------------------------------
     # 配置加载
@@ -210,23 +209,28 @@ class ExperimentScheduler:
         print(f"🔧 实验调度器启动，共 {len(self._pending)} 个任务，最大并发 {self.max_concurrent}。")
 
         summary_printed = False
-        idle_cycles_left = self._idle_cycle_grace if self.linger_when_idle else 0
 
-        while self._pending or self._active or (self.linger_when_idle and idle_cycles_left > 0):
+        while not self._shutdown_requested:
             self._consume_commands()
             self._try_launch_new_tasks()
 
             if self._active:
+                if self._waiting_for_shutdown:
+                    self._waiting_for_shutdown = False
+                    self._status_indicator = "running"
+                    self._sync_state()
                 time.sleep(self.check_interval)
                 self._harvest_finished_tasks()
                 summary_printed = False
-                idle_cycles_left = self._idle_cycle_grace
                 continue
 
             if self._pending:
+                if self._waiting_for_shutdown:
+                    self._waiting_for_shutdown = False
+                    self._status_indicator = "running"
+                    self._sync_state()
                 time.sleep(self.check_interval)
                 summary_printed = False
-                idle_cycles_left = self._idle_cycle_grace
                 continue
 
             if not summary_printed:
@@ -236,20 +240,21 @@ class ExperimentScheduler:
             if not self.linger_when_idle:
                 break
 
-            if self.state_store.has_pending_commands():
-                idle_cycles_left = self._idle_cycle_grace
-                time.sleep(min(self.check_interval or 0.5, 0.5))
-                continue
+            if not self._waiting_for_shutdown:
+                self._waiting_for_shutdown = True
+                self._status_indicator = "awaiting_shutdown"
+                self._sync_state()
 
-            idle_cycles_left -= 1
-            if idle_cycles_left > 0:
-                time.sleep(min(self.check_interval or 0.5, 0.5))
-                continue
-
-            break
+            sleep_interval = min(self.check_interval or 0.5, 0.5)
+            time.sleep(sleep_interval)
 
         if not summary_printed:
             self._print_summary()
+
+        self._status_indicator = "stopped"
+        self._waiting_for_shutdown = False
+        self._shutdown_requested = False
+        self._sync_state()
     # ------------------------------------------------------------------
     # 队列与执行
     # ------------------------------------------------------------------
@@ -262,7 +267,7 @@ class ExperimentScheduler:
                     "order": order,
                     "attempt": 0,
                     "id": self._new_task_id(),
-                    "created_at": datetime.now(tz=timezone.utc),
+                    "created_at": datetime.now(tz=LOCAL_TZ),
                 }
             )
 
@@ -291,7 +296,7 @@ class ExperimentScheduler:
                 {
                     "config": cfg,
                     "experiment": experiment,
-                    "started_at": datetime.now(tz=timezone.utc),
+                    "started_at": datetime.now(tz=LOCAL_TZ),
                     "attempt": task["attempt"],
                     "id": task["id"],
                     "created_at": task.get("created_at"),
@@ -303,7 +308,6 @@ class ExperimentScheduler:
 
         if launched:
             print(f"🚀 本轮启动 {launched} 个实验，当前运行 {len(self._active)} 个。")
-            self._sync_state()
             self._sync_state()
 
     def _launch_experiment(self, cfg: ScheduledExperiment, attempt: int):
@@ -384,7 +388,7 @@ class ExperimentScheduler:
                     "id": slot.get("id", self._new_task_id()),
                     "created_at": slot.get("created_at"),
                     "started_at": slot.get("started_at"),
-                    "completed_at": datetime.now(tz=timezone.utc),
+                    "completed_at": datetime.now(tz=LOCAL_TZ),
                     "work_dir": str(runtime["instance"].work_dir),
                     "run_id": runtime["instance"].current_run_id,
                 }
@@ -401,7 +405,7 @@ class ExperimentScheduler:
                             "order": slot.get("order", 0),
                             "attempt": slot["attempt"],
                             "id": self._new_task_id(),
-                            "created_at": datetime.now(tz=timezone.utc),
+                            "created_at": datetime.now(tz=LOCAL_TZ),
                         },
                     )
 
@@ -443,6 +447,9 @@ class ExperimentScheduler:
             "running": len(self._active),
             "finished": len(finished_records),
             "errors": len(error_records),
+            "status_indicator": self._status_indicator,
+            "waiting_for_shutdown": self._waiting_for_shutdown,
+            "shutdown_requested": self._shutdown_requested,
         }
 
         self.state_store.write_state(
@@ -463,8 +470,8 @@ class ExperimentScheduler:
             return None
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                value = value.replace(tzinfo=timezone.utc)
-            return value.astimezone(timezone.utc).strftime(ISO_TIMESTAMP)
+                value = value.replace(tzinfo=LOCAL_TZ)
+            return value.astimezone(LOCAL_TZ).isoformat()
         return str(value)
 
     @staticmethod
@@ -475,8 +482,8 @@ class ExperimentScheduler:
             return value
         if isinstance(value, datetime):
             if value.tzinfo is None:
-                value = value.replace(tzinfo=timezone.utc)
-            return value.astimezone(timezone.utc).strftime(ISO_TIMESTAMP)
+                value = value.replace(tzinfo=LOCAL_TZ)
+            return value.astimezone(LOCAL_TZ).isoformat()
         return str(value)
 
     # ------------------------------------------------------------------
@@ -500,6 +507,8 @@ class ExperimentScheduler:
                 self._handle_remove_finished(payload)
             elif action == "remove_error":
                 self._handle_remove_error(payload)
+            elif action == "shutdown_scheduler":
+                self._handle_shutdown_scheduler()
 
         self._sync_state()
 
@@ -524,21 +533,9 @@ class ExperimentScheduler:
             
             # 更强力的进程终止逻辑
             print(f"🛑 开始终止运行任务 {task_id} (PID: {process.pid})")
-            
-            # 首先尝试友好终止
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-                print(f"🛑 任务 {task_id} 已友好终止")
-            except Exception:
-                # 友好终止失败，强制终止
-                print(f"🛑 友好终止失败，强制终止任务 {task_id}")
-                process.kill()
-                try:
-                    process.wait(timeout=3)
-                    print(f"🛑 任务 {task_id} 已强制终止")
-                except Exception:
-                    print(f"⚠️  任务 {task_id} 终止可能不完整")
+
+            if not self._terminate_process_tree(process, task_id):
+                print(f"⚠️ 任务 {task_id} 终止可能不完整 (PID: {process.pid})")
             
             # 设置实验实例错误状态        
             runtime["instance"].set_error("terminated by user")
@@ -553,7 +550,7 @@ class ExperimentScheduler:
                     "id": slot.get("id", self._new_task_id()),
                     "created_at": slot.get("created_at"),
                     "started_at": slot.get("started_at"),
-                    "completed_at": datetime.now(tz=timezone.utc),
+                    "completed_at": datetime.now(tz=LOCAL_TZ),
                     "work_dir": str(runtime["instance"].work_dir),
                     "run_id": runtime["instance"].current_run_id,
                 }
@@ -579,7 +576,7 @@ class ExperimentScheduler:
                     "order": record.get("order", 0),
                     "attempt": record.get("attempt", 0),
                     "id": record.get("id", self._new_task_id()),
-                    "created_at": datetime.now(tz=timezone.utc),
+                    "created_at": datetime.now(tz=LOCAL_TZ),
                 },
             )
             print(f"↻ 重新调度任务 {task_id}")
@@ -606,6 +603,67 @@ class ExperimentScheduler:
                 removed = True
         if removed:
             print(f"🧹 已移除错误记录 {task_id}")
+
+    def _handle_shutdown_scheduler(self) -> None:
+        if self._shutdown_requested:
+            return
+        print("🛎️ 收到手动关机指令，准备退出调度器")
+        self._shutdown_requested = True
+        self._status_indicator = "stopped"
+
+    def _terminate_process_tree(self, process, task_id: str) -> bool:
+        """向整个进程组发送终止信号，必要时升级为强制杀死。"""
+        if process.poll() is not None:
+            print(f"ℹ️ 任务 {task_id} 已结束 (code={process.returncode})，无需再次终止")
+            return True
+
+        gentle_sent = self._send_signal(process, force=False)
+        if gentle_sent and self._wait_for_exit(process, timeout=5):
+            print(f"🛑 任务 {task_id} 已友好终止")
+            return True
+
+        print(f"🛑 友好终止任务 {task_id} 失败，准备强制终止")
+        force_sent = self._send_signal(process, force=True)
+        if force_sent and self._wait_for_exit(process, timeout=3):
+            print(f"🛑 任务 {task_id} 已强制终止")
+            return True
+
+        return process.poll() is not None
+
+    def _send_signal(self, process, *, force: bool) -> bool:
+        if process.poll() is not None:
+            return False
+        try:
+            if os.name != "nt":
+                pgid = os.getpgid(process.pid)
+                sig = signal.SIGKILL if force else signal.SIGTERM
+                os.killpg(pgid, sig)
+            else:  # pragma: no cover - Windows 特殊逻辑
+                if force:
+                    process.kill()
+                else:
+                    ctrl_break = getattr(signal, "CTRL_BREAK_EVENT", None)
+                    if ctrl_break is not None:
+                        process.send_signal(ctrl_break)
+                    else:
+                        process.terminate()
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError as exc:
+            print(f"⚠️ 无法向进程 {process.pid} 发送信号: {exc}")
+            return False
+
+    def _wait_for_exit(self, process, *, timeout: float) -> bool:
+        if process.poll() is not None:
+            return True
+        try:
+            process.wait(timeout=timeout)
+            return True
+        except subprocess.TimeoutExpired:
+            return False
+        except Exception:
+            return process.poll() is not None
 
     def _should_retry(self, cfg: ScheduledExperiment, attempt: int) -> bool:
         if not self.auto_restart:
