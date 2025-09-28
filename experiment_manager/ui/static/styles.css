@@ -115,10 +115,21 @@ button.active {
 .app-main {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+/* Dashboard interface specific layout */
+#dashboard-interface {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 14px;
   padding: 12px 18px 10px;
+}
+
+#dashboard-interface.hidden {
+  display: none !important;
 }
 
 .sidebar {
@@ -444,7 +455,7 @@ button.active {
 }
 
 @media (max-width: 1024px) {
-  .app-main {
+  #dashboard-interface {
     grid-template-columns: 1fr;
     padding: 12px;
   }
@@ -494,17 +505,18 @@ button.active {
 .interface-content {
   flex: 1;
   display: flex;
-  height: 100%;
+  min-height: 0;
 }
 
 .interface-content.hidden {
-  display: none;
+  display: none !important;
 }
 
 /* Query Interface */
 .query-layout {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
 }
 
