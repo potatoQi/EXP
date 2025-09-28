@@ -5,13 +5,15 @@
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from ..core import Experiment, ExperimentStatus
 from ..utils.config import ConfigManager
+from .state_store import ISO_TIMESTAMP, SchedulerStateStore
 
 
 @dataclass(order=True)
@@ -38,13 +40,31 @@ class ScheduledExperiment:
     def __post_init__(self) -> None:
         self.sort_index = -self.priority
 
+    def to_payload(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "command": self.command,
+            "priority": self.priority,
+            "tags": list(self.tags),
+            "gpu_ids": list(self.gpu_ids),
+            "cwd": self.cwd,
+            "base_dir": self.base_dir,
+            "environment": dict(self.environment),
+            "resume": self.resume,
+            "description": self.description,
+            "repeats": self.repeats,
+            "max_retries": self.max_retries,
+            "delay_seconds": self.delay_seconds,
+        }
+
 
 class ExperimentScheduler:
     """实验调度器：按配置顺序执行多组实验"""
 
     def __init__(self, config_path: Path, dry_run: bool = False):
         self.config_path = Path(config_path)
-        self.config_dir = self.config_path.parent.resolve()
+        self.config_dir = self.config_path.parent.resolve() # 配置文件所在目录
+        self.invocation_cwd = Path.cwd().resolve()  # 调度器启动时的工作目录
         self.config_manager = ConfigManager(self.config_path)   # 配置对象
         scheduler_cfg = self.config_manager.get_scheduler_config()  # 调度器配置
         self.max_concurrent = int(scheduler_cfg.get("max_concurrent_experiments", 1))   # 最大并发实验数
@@ -56,8 +76,11 @@ class ExperimentScheduler:
         if base_dir_path.is_absolute():
             self.base_experiment_dir = base_dir_path.resolve()
         else:
-            self.base_experiment_dir = (self.config_dir / base_dir_path).resolve()   # 实验输出根目录
+            self.base_experiment_dir = (self.invocation_cwd / base_dir_path).resolve()   # 实验输出根目录
         self.auto_restart = bool(scheduler_cfg.get("auto_restart_on_error", False)) # 是否自动重启错误的实验
+        self.linger_when_idle = bool(scheduler_cfg.get("linger_when_idle", True))   # 实验全部完成后是否继续等待 UI 操作命令
+        self.idle_grace_period = float(scheduler_cfg.get("idle_grace_period", 30.0))    # UI 无操作时自动退出的时间上限
+        self._idle_cycle_grace = self._compute_idle_cycle_grace()   # 实验全部完成后会进行检查的次数 (检查完若一直没更新就退出)
 
         self.dry_run = dry_run
 
@@ -65,6 +88,15 @@ class ExperimentScheduler:
         self._pending: List[Dict[str, Any]] = []    # pending 列表
         self._active: List[Dict[str, Any]] = []     # running 列表
         self._finished: List[Dict[str, Any]] = []   # finished 列表
+        self._task_counter = 0
+
+        self.state_store = SchedulerStateStore(self.base_experiment_dir)
+
+    # 计算实验全部完成后等待 UI 操作的检查次数
+    def _compute_idle_cycle_grace(self) -> int:
+        interval = max(self.check_interval, 0.5)
+        cycles = int(self.idle_grace_period / interval)
+        return max(cycles, 2)
 
     # ------------------------------------------------------------------
     # 配置加载
@@ -177,18 +209,47 @@ class ExperimentScheduler:
 
         print(f"🔧 实验调度器启动，共 {len(self._pending)} 个任务，最大并发 {self.max_concurrent}。")
 
-        while self._pending or self._active:
-            self._try_launch_new_tasks()    # 尝试启动新任务
-            if not self._active:
-                # 没有 running task 但仍有 pending task 时，等待资源
+        summary_printed = False
+        idle_cycles_left = self._idle_cycle_grace if self.linger_when_idle else 0
+
+        while self._pending or self._active or (self.linger_when_idle and idle_cycles_left > 0):
+            self._consume_commands()
+            self._try_launch_new_tasks()
+
+            if self._active:
                 time.sleep(self.check_interval)
+                self._harvest_finished_tasks()
+                summary_printed = False
+                idle_cycles_left = self._idle_cycle_grace
                 continue
 
-            time.sleep(self.check_interval)
-            self._harvest_finished_tasks()  # 收割已完成的任务
+            if self._pending:
+                time.sleep(self.check_interval)
+                summary_printed = False
+                idle_cycles_left = self._idle_cycle_grace
+                continue
 
-        self._print_summary()
+            if not summary_printed:
+                self._print_summary()
+                summary_printed = True
 
+            if not self.linger_when_idle:
+                break
+
+            if self.state_store.has_pending_commands():
+                idle_cycles_left = self._idle_cycle_grace
+                time.sleep(min(self.check_interval or 0.5, 0.5))
+                continue
+
+            idle_cycles_left -= 1
+            if idle_cycles_left > 0:
+                time.sleep(min(self.check_interval or 0.5, 0.5))
+                continue
+
+            break
+
+        if not summary_printed:
+            self._print_summary()
     # ------------------------------------------------------------------
     # 队列与执行
     # ------------------------------------------------------------------
@@ -200,8 +261,12 @@ class ExperimentScheduler:
                     "config": exp_cfg,
                     "order": order,
                     "attempt": 0,
+                    "id": self._new_task_id(),
+                    "created_at": datetime.now(tz=timezone.utc),
                 }
             )
+
+        self._sync_state()
 
     def _print_plan_only(self) -> None:
         print("📝 调度计划 (dry-run mode)")
@@ -216,10 +281,8 @@ class ExperimentScheduler:
         launched = 0
         while self._pending and len(self._active) < self.max_concurrent:
             # 取出 _pending 队首
-            task = self._pending[0]
+            task = self._pending.pop(0)
             cfg = task["config"]
-
-            self._pending.pop(0)
             task["attempt"] += 1
             # 打包为一个 experiment 实例
             experiment = self._launch_experiment(cfg, attempt=task["attempt"])
@@ -228,14 +291,20 @@ class ExperimentScheduler:
                 {
                     "config": cfg,
                     "experiment": experiment,
-                    "started_at": datetime.now(),
+                    "started_at": datetime.now(tz=timezone.utc),
                     "attempt": task["attempt"],
+                    "id": task["id"],
+                    "created_at": task.get("created_at"),
+                    "work_dir": str(experiment["instance"].work_dir) if isinstance(experiment, dict) else None,
+                    "run_id": experiment["instance"].current_run_id if isinstance(experiment, dict) else None,
                 }
             )
             launched += 1
 
         if launched:
             print(f"🚀 本轮启动 {launched} 个实验，当前运行 {len(self._active)} 个。")
+            self._sync_state()
+            self._sync_state()
 
     def _launch_experiment(self, cfg: ScheduledExperiment, attempt: int):
         config_dir = self.config_dir
@@ -245,7 +314,7 @@ class ExperimentScheduler:
             if custom_base.is_absolute():
                 base_dir = custom_base.resolve()
             else:
-                base_dir = (config_dir / custom_base).resolve()
+                base_dir = (self.invocation_cwd / custom_base).resolve()
         else:
             base_dir = self.base_experiment_dir
 
@@ -254,7 +323,7 @@ class ExperimentScheduler:
             if custom_cwd.is_absolute():
                 working_dir = custom_cwd.resolve()
             else:
-                working_dir = (config_dir / custom_cwd).resolve()
+                working_dir = (self.invocation_cwd / custom_cwd).resolve()
         else:
             working_dir = config_dir
 
@@ -312,6 +381,12 @@ class ExperimentScheduler:
                     "status": "success" if success else "failed",
                     "attempt": slot["attempt"],
                     "return_code": return_code,
+                    "id": slot.get("id", self._new_task_id()),
+                    "created_at": slot.get("created_at"),
+                    "started_at": slot.get("started_at"),
+                    "completed_at": datetime.now(tz=timezone.utc),
+                    "work_dir": str(runtime["instance"].work_dir),
+                    "run_id": runtime["instance"].current_run_id,
                 }
             )
 
@@ -319,9 +394,201 @@ class ExperimentScheduler:
                 print(f"⚠️ 实验 {cfg.name} attempt {slot['attempt']} 失败 (code={return_code})")
                 if self._should_retry(cfg, slot["attempt"]):
                     print(f"↺ 将实验 {cfg.name} 重新排队")
-                    self._pending.insert(0, {"config": cfg, "order": slot.get("order", 0), "attempt": slot["attempt"]})
+                    self._pending.insert(
+                        0,
+                        {
+                            "config": cfg,
+                            "order": slot.get("order", 0),
+                            "attempt": slot["attempt"],
+                            "id": self._new_task_id(),
+                            "created_at": datetime.now(tz=timezone.utc),
+                        },
+                    )
 
         self._active = still_running
+        self._sync_state()
+
+    # ------------------------------------------------------------------
+    # Helper
+    # ------------------------------------------------------------------
+    def _sync_state(self) -> None:
+        def _build_queue(records: Iterable[Dict[str, Any]], status: str) -> List[Dict[str, Any]]:
+            output: List[Dict[str, Any]] = []
+            for item in records:
+                cfg = item["config"]
+                payload = cfg.to_payload()
+                payload.update(
+                    {
+                        "id": self._serialize_scalar(item.get("id")),
+                        "status": status,
+                        "raw_status": self._serialize_scalar(item.get("status", status)),
+                        "attempt": int(item.get("attempt", 0)),
+                        "created_at": self._format_dt(item.get("created_at")),
+                        "started_at": self._format_dt(item.get("started_at")),
+                        "completed_at": self._format_dt(item.get("completed_at")),
+                        "return_code": self._serialize_scalar(item.get("return_code")),
+                        "work_dir": self._serialize_scalar(item.get("work_dir")),
+                        "run_id": self._serialize_scalar(item.get("run_id")),
+                    }
+                )
+                output.append(payload)
+            return output
+
+        finished_records = [item for item in self._finished if item.get("status") == "success"]
+        error_records = [item for item in self._finished if item.get("status") != "success"]
+
+        summary = {
+            "total": len(self._scheduled),
+            "pending": len(self._pending),
+            "running": len(self._active),
+            "finished": len(finished_records),
+            "errors": len(error_records),
+        }
+
+        self.state_store.write_state(
+            pending=_build_queue(self._pending, ExperimentStatus.PENDING.value),
+            running=_build_queue(self._active, ExperimentStatus.RUNNING.value),
+            finished=_build_queue(finished_records, ExperimentStatus.FINISHED.value),
+            errors=_build_queue(error_records, ExperimentStatus.ERROR.value),
+            summary=summary,
+        )
+
+    def _new_task_id(self) -> str:
+        self._task_counter += 1
+        return f"task-{int(time.time())}-{self._task_counter:05d}"
+
+    @staticmethod
+    def _format_dt(value: Optional[datetime]) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc).strftime(ISO_TIMESTAMP)
+        return str(value)
+
+    @staticmethod
+    def _serialize_scalar(value: Any) -> Any:
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc).strftime(ISO_TIMESTAMP)
+        return str(value)
+
+    # ------------------------------------------------------------------
+    # 命令处理
+    # ------------------------------------------------------------------
+    def _consume_commands(self) -> None:
+        commands = self.state_store.consume_commands()
+        if not commands:
+            return
+
+        for command in commands:
+            action = command.get("action")
+            payload = command.get("payload", {})
+            if action == "remove_pending":
+                self._handle_remove_pending(payload)
+            elif action == "terminate_running":
+                self._handle_terminate_running(payload)
+            elif action == "retry_error":
+                self._handle_retry_error(payload)
+            elif action == "remove_finished":
+                self._handle_remove_finished(payload)
+            elif action == "remove_error":
+                self._handle_remove_error(payload)
+
+        self._sync_state()
+
+    def _handle_remove_pending(self, payload: Dict[str, Any]) -> None:
+        task_id = payload.get("id")
+        if not task_id:
+            return
+        before = len(self._pending)
+        self._pending = [item for item in self._pending if item.get("id") != task_id]
+        if len(self._pending) != before:
+            print(f"🗑️ 已移除 pending 任务 {task_id}")
+
+    def _handle_terminate_running(self, payload: Dict[str, Any]) -> None:
+        task_id = payload.get("id")
+        if not task_id:
+            return
+        for slot in list(self._active):
+            if slot.get("id") != task_id:
+                continue
+            runtime = slot["experiment"]
+            process = runtime["process"]
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except Exception:
+                process.kill()
+            runtime["instance"].set_error("terminated by user")
+            self._finished.append(
+                {
+                    "config": slot["config"],
+                    "status": "terminated",
+                    "attempt": slot["attempt"],
+                    "return_code": process.returncode,
+                    "id": slot.get("id", self._new_task_id()),
+                    "created_at": slot.get("created_at"),
+                    "started_at": slot.get("started_at"),
+                    "completed_at": datetime.now(tz=timezone.utc),
+                    "work_dir": str(runtime["instance"].work_dir),
+                    "run_id": runtime["instance"].current_run_id,
+                }
+            )
+            self._active.remove(slot)
+            print(f"🛑 用户终止运行任务 {task_id}")
+            break
+
+    def _handle_retry_error(self, payload: Dict[str, Any]) -> None:
+        task_id = payload.get("id")
+        if not task_id:
+            return
+        for record in list(self._finished):
+            if record.get("id") != task_id:
+                continue
+            if record.get("status") not in {"failed", "terminated"}:
+                return
+            cfg = record["config"]
+            self._pending.insert(
+                0,
+                {
+                    "config": cfg,
+                    "order": record.get("order", 0),
+                    "attempt": record.get("attempt", 0),
+                    "id": record.get("id", self._new_task_id()),
+                    "created_at": datetime.now(tz=timezone.utc),
+                },
+            )
+            print(f"↻ 重新调度任务 {task_id}")
+            self._finished.remove(record)
+            break
+
+    def _handle_remove_finished(self, payload: Dict[str, Any]) -> None:
+        task_id = payload.get("id")
+        if not task_id:
+            return
+        before = len(self._finished)
+        self._finished = [item for item in self._finished if item.get("id") != task_id]
+        if len(self._finished) != before:
+            print(f"🧹 已移除完成记录 {task_id}")
+
+    def _handle_remove_error(self, payload: Dict[str, Any]) -> None:
+        task_id = payload.get("id")
+        if not task_id:
+            return
+        removed = False
+        for record in list(self._finished):
+            if record.get("id") == task_id and record.get("status") in {"failed", "terminated"}:
+                self._finished.remove(record)
+                removed = True
+        if removed:
+            print(f"🧹 已移除错误记录 {task_id}")
 
     def _should_retry(self, cfg: ScheduledExperiment, attempt: int) -> bool:
         if not self.auto_restart:

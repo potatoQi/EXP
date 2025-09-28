@@ -175,3 +175,49 @@ def test_run_all_executes_until_complete(
     assert scheduler._active == []
     assert scheduler._finished and scheduler._finished[0]["status"] == "success"
     assert any("调度完成" in record.args[0] for record in mock_print.call_args_list if record.args)
+
+
+def test_relative_base_dir_uses_invocation_cwd(
+    scheduler_config_builder: Callable[[Iterable[Dict[str, object]], Optional[Dict[str, object]]], Path]
+) -> None:
+    config_path = scheduler_config_builder(
+        [],
+        scheduler_overrides={"base_experiment_dir": "./rel_outputs"},
+    )
+
+    run_cwd = config_path.parent / "invocation_cwd"
+    run_cwd.mkdir()
+
+    with patch("experiment_manager.scheduler.scheduler.Path.cwd", return_value=run_cwd):
+        scheduler = ExperimentScheduler(config_path)
+
+    assert scheduler.base_experiment_dir == (run_cwd / "rel_outputs").resolve()
+
+
+def test_relative_experiment_cwd_uses_invocation_cwd(
+    scheduler_config_builder: Callable[[Iterable[Dict[str, object]], Optional[Dict[str, object]]], Path]
+) -> None:
+    config_path = scheduler_config_builder(
+        [
+            {"name": "demo", "command": "echo demo", "cwd": "./nested"},
+        ],
+        scheduler_overrides={"base_experiment_dir": "./outputs"},
+    )
+
+    run_cwd = config_path.parent / "invocation_cwd"
+    (run_cwd / "nested").mkdir(parents=True)
+
+    with patch("experiment_manager.scheduler.scheduler.Path.cwd", return_value=run_cwd):
+        scheduler = ExperimentScheduler(config_path, dry_run=True)
+
+    with patch("experiment_manager.scheduler.scheduler.Experiment") as mock_experiment:
+        instance = Mock()
+        instance.work_dir = run_cwd / "dummy"
+        instance.current_run_id = "run_0001"
+        mock_experiment.return_value = instance
+
+        scheduler._launch_experiment(scheduler._scheduled[0], attempt=1)
+
+    assert mock_experiment.call_args is not None
+    kwargs = mock_experiment.call_args.kwargs
+    assert kwargs["cwd"] == (run_cwd / "nested").resolve()

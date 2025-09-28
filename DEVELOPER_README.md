@@ -11,9 +11,15 @@ experiment_manager/
     status.py          # 实验状态枚举
   scheduler/
     scheduler.py       # 调度器主循环，解析配置并顺序/并发执行实验
+      state_store.py     # 调度器状态与命令持久化（UI 读取）
   utils/
     config.py          # 配置加载与校验
     gpu.py             # GPU 可用性检测与分配工具（若启用）
+   ui/
+      service.py         # SchedulerUISession 封装，面向 FastAPI/CLI
+      server.py          # FastAPI 路由与 WebSocket 服务
+      cli.py             # `EXP` 命令入口，TensorBoard 风格体验
+      static/            # 前端仪表盘（HTML/CSS/JS）
 experiments/           # 实际运行生成的长期实验目录
 experiments_tmp/       # 临时或测试性的实验输出（可清理）
 toy_example/           # 示例脚本与配置
@@ -26,7 +32,9 @@ DEVELOPER_README.md    # 本指南
 
 - **配置层 (`utils/config.py`)**：读取 `toml` 文件，提供访问接口与基础校验。
 - **调度层 (`scheduler/scheduler.py`)**：将配置翻译为 `ScheduledExperiment` 队列，负责并发控制、失败重试、终端摘要等。
+- **状态层 (`scheduler/state_store.py`)**：为 UI/CLI 提供磁盘持久化（`scheduler_state.json` + `commands.json`）。
 - **实验层 (`core/experiment.py`)**：表示单个实验实例，负责目录搭建、日志记录、状态更新以及子进程生命周期管理；内置 `description` 字段用于记录自然语言描述。
+*- **UI 层 (`ui/`)**：`SchedulerUISession` 读取状态、下发命令；`server.py` 提供 FastAPI REST + WebSocket；`static/` 前端页面实现状态面板、详情抽屉、实时日志分页视图；`cli.py` 封装 `EXP` 指令，负责环境检查、端口分配与浏览器打开。*
 
 ## 运行流程速览
 
@@ -39,6 +47,7 @@ DEVELOPER_README.md    # 本指南
    - 启动子进程并持续收集 stdout/stderr；
    - 更新状态并将元数据写入 `metadata.json`。
 5. 调度器循环收割已完成任务，根据返回码决定是否重试，并在结尾打印摘要。
+6. UI/CLI（如 `EXP ./experiments`）通过 `SchedulerStateStore` 读取 `.exp_state/` 目录，展示最新状态并对命令队列写入操作，由调度器在下一轮消费。
 
 ## 关键模块说明
 
@@ -64,6 +73,14 @@ pip install -e .
 
 示例脚本统一放在 `toy_example/` 目录，便于快速体验与回归测试。
 
+安装后会注册 `EXP` 命令，可在项目任意位置运行：
+
+```bash
+EXP path/to/experiments --host 0.0.0.0 --port 6066
+```
+
+命令最终调用 `experiment_manager.ui.cli:main`，内部使用 FastAPI + Uvicorn 提供 Web 服务，并自动选择空闲端口与打开浏览器。
+
 ## 常见开发任务
 
 ### 调度器逻辑调整
@@ -71,6 +88,10 @@ pip install -e .
 - 修改 `ScheduledExperiment` 字段时务必同步更新 `_create_experiment_config`、`_launch_experiment` 和相关日志输出。
 
 ### Experiment 行为扩展
+- **UI/CLI 扩展**：
+   - 后端：在 `SchedulerUISession` 中新增方法时，记得同步 FastAPI 路由以及测试（`tests/test_ui_service.py`、`tests/test_ui_api.py`）。
+   - 前端：`static/app.js` 负责状态轮询、详情抽屉与日志面板（含分页/布局按钮）；修改后请在浏览器中手动验证，并可考虑添加端到端测试脚本。
+   - CLI：`ui/cli.py` 需保持参数与 README 示例一致，注意端口占用处理与 `--no-browser` 选项。
 - 新增状态或日志逻辑：在 `Experiment` 内追加方法或调整现有方法，并确保 `_save_metadata` 与 `load_from_dir` 保持一致。
 - 调整目录结构或文件命名时，注意与现有分析脚本或外部依赖的兼容性。
 
@@ -105,5 +126,6 @@ pip install -e .
 
 - **代码阅读**：从 `Experiment` 的 `_save_metadata` 与 `load_from_dir` 开始理解状态持久化；再沿着调度器 `_launch_experiment` 理解实例化流程。
 - **扩展字段实践**：按照上文步骤实施后，再执行一次回归调度，确认新字段在 `metadata.json` 中出现并在需要的地方可用。
+- **UI 验证**：开发 UI 功能后，运行 `pytest` 以及 `EXP <实验目录>` 对照前端界面，确保 `scheduler_state.json`、`commands.json` 与 WebSocket 日志流协同工作。
 
 祝开发顺利！如需更多文档或自动化测试支持，可在 `docs/` 目录新增主题化说明，并在此 README 中保持索引更新。

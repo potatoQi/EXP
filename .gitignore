@@ -1,5 +1,7 @@
 /data
 /experiments
+/experiments_long_demo
+
 .pytest_cache
 __pycache__
 *.pyc

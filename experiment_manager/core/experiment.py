@@ -317,10 +317,11 @@ class Experiment:
                         # 读取错误输出
                         stderr_content = process.stderr.read()
                         if stderr_content:
-                            self.append_log("=== 错误输出 ===")
+                            self.append_log("=== stderr 输出 ===")
                             for line in stderr_content.strip().split('\n'):
-                                if line.strip():
-                                    self.append_log(f"ERROR: {line}")
+                                text = line.strip()
+                                if text:
+                                    self.append_log(f"STDERR: {text}")
                         
                         # 等待进程结束并记录最终状态
                         return_code = process.wait()

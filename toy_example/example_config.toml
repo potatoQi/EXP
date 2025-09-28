@@ -3,6 +3,8 @@ max_concurrent_experiments = 1          # 最大并发实验数
 check_interval = 5                      # 调度循环中检查任务状态的时间间隔(秒)
 base_experiment_dir = "./experiments"   # 全局实验输出根目录（必填）
 auto_restart_on_error = true            # 是否允许自动重启失败任务
+linger_when_idle = true                 # 实验全部完成后继续等待 UI 命令
+idle_grace_period = 30                 # UI 无操作时自动退出等待的宽限秒数
 
 # --- 实验配置示例 ---------------------------------------------------------
 # [[experiments]]                       # 数组表，每次出现表示一组新的实验配置

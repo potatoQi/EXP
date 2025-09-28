@@ -19,6 +19,8 @@
 pip install -e .
 ```
 
+安装后会注册名为 `EXP` 的命令行工具，用于启动调度器 UI。后文有详细说明。
+
 ### 使用示例
 
 #### CNN训练示例
@@ -46,6 +48,44 @@ python run_scheduler.py --config example_config.toml
 ```
 
 每个实验可以设置 `priority`、`gpu_ids`、`description`、`resume` 等字段，调度器会自动在对应目录中新建 `run_xxxx` 运行并将指标写回。
+
+#### ⏱️ 长时间调度演示（便于观察 UI 状态）
+
+`toy_example/long_running_config.toml` 预设 3 个耗时约 150/210/270 秒的任务，默认并发度为 2，可在面板中看到 Pending → Running → Finished 的流转。
+
+```bash
+# 终端 ①：启动调度器，运行约 5 分钟
+python toy_example/run_scheduler.py --config toy_example/long_running_config.toml
+
+# 终端 ②：启动 UI，观察 experiments_long_demo 目录
+EXP experiments_long_demo
+```
+
+观察提示：
+
+- `slow_with_jitter` 会因为 `--jitter` 参数导致耗时略有波动。
+- 日志面板每 15~30 秒追加一行进度，方便测试实时刷新。
+- 指标抽屉中的 `progress.csv` 会持续增长，可用“指标预览”快速检查写入情况。
+
+#### 🎛️ 调度器可视化面板（TensorBoard 风格）
+
+运行调度器后，可通过自带的 UI 面板实时查看 Pending/Running/Finished/Error 队列、实验详情、日志与指标：
+
+```bash
+EXP experiments
+```
+
+- `experiments` 是调度器生成实验目录的根路径；可替换为你的实际输出目录。
+- 默认监听 `http://127.0.0.1:6066`，若端口占用会自动选取空闲端口并打印最终 URL。
+- 默认自动打开浏览器，可通过 `--no-browser` 关闭；也可以用 `--host 0.0.0.0 --port 7000` 指定监听地址/端口。
+
+UI 页面提供以下能力：
+
+- 四个状态面板：一目了然地查看实验队列。
+- 点击实验卡片打开详情抽屉，展示 `metadata.json`、指标预览与所有终端日志。
+- 「监控」按钮打开实时日志面板（多窗口支持，提供分页切换与多列布局按钮）。
+- 在错误面板中可直接点击「重跑」触发 `retry_error` 命令；其他面板提供删除/终止操作。
+- 页面右上角可手动刷新，也会每 3 秒自动轮询最新状态。
 
 #### 核心API用法
 
