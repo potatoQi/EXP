@@ -13,7 +13,7 @@ import json
 import os
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, MutableMapping, Optional
 
@@ -26,8 +26,8 @@ class SchedulerCommand:
 
     action: str
     payload: Dict[str, Any] = field(default_factory=dict)
-    id: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S%f"))
-    created_at: str = field(default_factory=lambda: datetime.now(tz=timezone.utc).strftime(ISO_TIMESTAMP))
+    id: str = field(default_factory=lambda: datetime.now(tz=timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M%S%f"))
+    created_at: str = field(default_factory=lambda: datetime.now(tz=timezone(timedelta(hours=8))).strftime(ISO_TIMESTAMP))
 
     def to_dict(self) -> Dict[str, Any]:
         return {

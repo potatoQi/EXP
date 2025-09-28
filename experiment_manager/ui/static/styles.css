@@ -295,6 +295,11 @@ button.active {
   grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 
+.log-grid.columns-4 .log-panel {
+  max-height: 50vh;
+  overflow: hidden;
+}
+
 .log-panel {
   background: var(--bg-panel);
   border-radius: 12px;

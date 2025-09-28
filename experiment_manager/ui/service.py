@@ -259,9 +259,11 @@ class SchedulerUISession:
 
     @staticmethod
     def _format_timestamp(value: float) -> str:
-        from datetime import datetime, timezone
-
-        return datetime.fromtimestamp(value, tz=timezone.utc).strftime(ISO_TIMESTAMP)
+        from datetime import datetime, timezone, timedelta
+        
+        # Use Asia/Shanghai timezone (UTC+8)
+        shanghai_tz = timezone(timedelta(hours=8))
+        return datetime.fromtimestamp(value, tz=shanghai_tz).strftime(ISO_TIMESTAMP)
 
 
 __all__ = ["SchedulerUISession"]
