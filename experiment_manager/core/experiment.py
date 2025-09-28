@@ -292,7 +292,8 @@ class Experiment:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,  # 分别捕获stderr
                 universal_newlines=True,
-                bufsize=0  # 无缓冲
+                bufsize=0,  # 无缓冲
+                preexec_fn=os.setsid  # Create new process group
             )
             
             # 标记为运行状态

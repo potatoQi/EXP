@@ -525,11 +525,25 @@ class ExperimentScheduler:
                 continue
             runtime = slot["experiment"]
             process = runtime["process"]
-            process.terminate()
+            
+            # Use process group to kill all child processes
+            import os, signal
             try:
-                process.wait(timeout=10)
+                # Try to kill the process group (includes shell and all children)
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                try:
+                    process.wait(timeout=5)
+                except Exception:
+                    # If SIGTERM didn't work, use SIGKILL on the process group
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
             except Exception:
-                process.kill()
+                # Fallback to original method if process group fails
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except Exception:
+                    process.kill()
+            
             runtime["instance"].set_error("terminated by user")
             self._finished.append(
                 {
