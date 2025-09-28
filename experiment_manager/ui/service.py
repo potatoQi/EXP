@@ -4,9 +4,11 @@ from __future__ import annotations
 import asyncio
 import csv
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from datetime import datetime, timezone, timedelta
 
 from ..scheduler.state_store import ISO_TIMESTAMP, SchedulerCommand, SchedulerStateStore
 
@@ -135,6 +137,199 @@ class SchedulerUISession:
         command = SchedulerCommand(action=action, payload=payload)
         self.state_store.enqueue_command(command)
         return command.to_dict()
+
+    # ------------------------------------------------------------------
+    # 实验查询
+    # ------------------------------------------------------------------
+    def search_experiments(
+        self,
+        name_pattern: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        description: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """搜索实验
+        
+        Args:
+            name_pattern: 实验名正则匹配模式
+            tags: 标签列表，需要包含所有指定标签
+            description: 描述关键词搜索
+            start_time: 开始时间过滤 (ISO format)
+            end_time: 结束时间过滤 (ISO format)
+            
+        Returns:
+            List of experiment records with metadata
+        """
+        experiments = []
+        
+        # 收集所有实验目录
+        for exp_dir in self.base_dir.glob("*"):
+            if not exp_dir.is_dir() or exp_dir.name.startswith('.'):
+                continue
+                
+            metadata_file = exp_dir / "metadata.json"
+            if not metadata_file.exists():
+                continue
+                
+            try:
+                metadata = self._load_json(metadata_file)
+                if not metadata:
+                    continue
+                    
+                # 构建实验记录
+                experiment = {
+                    "name": metadata.get("name", ""),
+                    "path": str(exp_dir),
+                    "timestamp": metadata.get("timestamp", ""),
+                    "tags": metadata.get("tags", []),
+                    "description": metadata.get("description", ""),
+                    "status": metadata.get("status", ""),
+                    "command": metadata.get("command", ""),
+                }
+                
+                # 应用过滤条件
+                if not self._matches_filters(experiment, name_pattern, tags, description, start_time, end_time):
+                    continue
+                    
+                experiments.append(experiment)
+                
+            except Exception:
+                # 跳过无法解析的实验
+                continue
+                
+        # 按时间戳排序
+        experiments.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        return experiments
+    
+    def get_experiment_files(self, experiment_path: str) -> List[Dict[str, Any]]:
+        """获取实验目录下的文件列表
+        
+        Args:
+            experiment_path: 实验目录绝对路径
+            
+        Returns:
+            List of file information
+        """
+        exp_dir = Path(experiment_path)
+        if not exp_dir.exists() or not exp_dir.is_dir():
+            return []
+            
+        files = []
+        
+        # 递归获取文件
+        def collect_files(directory: Path, prefix: str = ""):
+            try:
+                for item in sorted(directory.iterdir()):
+                    rel_path = prefix + item.name
+                    if item.is_file():
+                        stat = item.stat()
+                        files.append({
+                            "name": item.name,
+                            "path": rel_path,
+                            "absolute_path": str(item),
+                            "size": stat.st_size,
+                            "modified": self._format_timestamp(stat.st_mtime),
+                            "type": "file"
+                        })
+                    elif item.is_dir() and not item.name.startswith('.'):
+                        files.append({
+                            "name": item.name,
+                            "path": rel_path,
+                            "absolute_path": str(item),
+                            "type": "directory"
+                        })
+                        collect_files(item, rel_path + "/")
+            except PermissionError:
+                pass
+                
+        collect_files(exp_dir)
+        return files
+    
+    def read_experiment_file(self, file_path: str, max_size: int = 1024 * 1024) -> Dict[str, Any]:
+        """读取实验文件内容
+        
+        Args:
+            file_path: 文件绝对路径
+            max_size: 最大文件大小限制
+            
+        Returns:
+            File content and metadata
+        """
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists() or not file_path_obj.is_file():
+            raise FileNotFoundError(f"File not found: {file_path}")
+            
+        stat = file_path_obj.stat()
+        if stat.st_size > max_size:
+            raise ValueError(f"File too large: {stat.st_size} bytes (max: {max_size})")
+            
+        # 尝试读取文本文件
+        try:
+            with open(file_path_obj, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return {
+                "content": content,
+                "size": stat.st_size,
+                "encoding": "utf-8",
+                "type": "text"
+            }
+        except UnicodeDecodeError:
+            # 如果不是文本文件，返回基本信息
+            return {
+                "content": None,
+                "size": stat.st_size,
+                "encoding": "binary",
+                "type": "binary",
+                "message": "Binary file cannot be previewed"
+            }
+    
+    def _matches_filters(
+        self,
+        experiment: Dict[str, Any],
+        name_pattern: Optional[str],
+        tags: Optional[List[str]],
+        description: Optional[str],
+        start_time: Optional[str],
+        end_time: Optional[str],
+    ) -> bool:
+        """检查实验是否匹配过滤条件"""
+        
+        # 名称正则匹配
+        if name_pattern:
+            try:
+                if not re.search(name_pattern, experiment.get("name", ""), re.IGNORECASE):
+                    return False
+            except re.error:
+                # 正则表达式错误，回退到简单匹配
+                if name_pattern.lower() not in experiment.get("name", "").lower():
+                    return False
+        
+        # 标签匹配 (需要包含所有指定标签)
+        if tags:
+            exp_tags = experiment.get("tags", [])
+            if not all(tag in exp_tags for tag in tags):
+                return False
+        
+        # 描述关键词搜索
+        if description:
+            exp_desc = experiment.get("description", "")
+            if description.lower() not in exp_desc.lower():
+                return False
+        
+        # 时间范围过滤
+        exp_time = experiment.get("timestamp", "")
+        if exp_time:
+            try:
+                if start_time and exp_time < start_time:
+                    return False
+                if end_time and exp_time > end_time:
+                    return False
+            except (ValueError, TypeError):
+                # 时间格式错误，跳过时间过滤
+                pass
+        
+        return True
 
     # ------------------------------------------------------------------
     # 日志流工具

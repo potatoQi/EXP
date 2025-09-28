@@ -75,6 +75,52 @@ def create_app(session: SchedulerUISession) -> FastAPI:
         command = current.send_command(action, command_payload)
         return JSONResponse({"status": "accepted", "command": command})
 
+    @router.get("/experiments/search")
+    async def search_experiments(
+        name_pattern: Optional[str] = Query(default=None, description="实验名正则匹配模式"),
+        tags: Optional[str] = Query(default=None, description="标签列表，逗号分隔"),
+        description: Optional[str] = Query(default=None, description="描述关键词搜索"),
+        start_time: Optional[str] = Query(default=None, description="开始时间 (ISO format)"),
+        end_time: Optional[str] = Query(default=None, description="结束时间 (ISO format)"),
+        current: SchedulerUISession = Depends(get_session),
+    ) -> JSONResponse:
+        tag_list = []
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
+        
+        experiments = current.search_experiments(
+            name_pattern=name_pattern,
+            tags=tag_list,
+            description=description,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        return JSONResponse(experiments)
+
+    @router.get("/experiments/{experiment_path:path}/files")
+    async def get_experiment_files(
+        experiment_path: str,
+        current: SchedulerUISession = Depends(get_session),
+    ) -> JSONResponse:
+        try:
+            files = current.get_experiment_files(experiment_path)
+            return JSONResponse(files)
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @router.get("/files/read")
+    async def read_file(
+        file_path: str = Query(description="文件绝对路径"),
+        current: SchedulerUISession = Depends(get_session),
+    ) -> JSONResponse:
+        try:
+            content = current.read_experiment_file(file_path)
+            return JSONResponse(content)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     app.include_router(router)
 
     @app.websocket("/ws/logs/{task_id}")

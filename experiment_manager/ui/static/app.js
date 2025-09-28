@@ -54,6 +54,8 @@ function setupControls() {
 
 document.addEventListener("DOMContentLoaded", () => {
   setupControls();
+  setupInterfaceSelector();
+  setupQueryInterface();
   refreshState();
   startAutoRefresh();
   window.addEventListener("beforeunload", () => {
@@ -864,5 +866,292 @@ function updatePager(totalPages) {
 function getTotalPages() {
   if (logOrder.length === 0) return 1;
   return Math.ceil(logOrder.length / layoutColumns);
+}
+
+// Query Interface Functionality
+let currentExperiments = [];
+let currentExperimentFiles = [];
+let selectedExperiment = null;
+
+function setupQueryInterface() {
+  const queryForm = document.getElementById("query-form");
+  const clearFiltersBtn = document.getElementById("clear-filters");
+  const experimentsList = document.getElementById("experiments-list");
+  const previewContent = document.getElementById("preview-content");
+
+  if (queryForm) {
+    queryForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await performSearch();
+    });
+  }
+
+  if (clearFiltersBtn) {
+    clearFiltersBtn.addEventListener("click", () => {
+      clearFilters();
+    });
+  }
+}
+
+async function performSearch() {
+  const namePattern = document.getElementById("name-pattern")?.value || "";
+  const tags = document.getElementById("tags-input")?.value || "";
+  const description = document.getElementById("description-input")?.value || "";
+  const startTime = document.getElementById("start-time")?.value || "";
+  const endTime = document.getElementById("end-time")?.value || "";
+
+  try {
+    const params = new URLSearchParams();
+    if (namePattern) params.append("name_pattern", namePattern);
+    if (tags) params.append("tags", tags);
+    if (description) params.append("description", description);
+    if (startTime) params.append("start_time", new Date(startTime).toISOString());
+    if (endTime) params.append("end_time", new Date(endTime).toISOString());
+
+    const response = await fetch(`/api/experiments/search?${params.toString()}`);
+    if (!response.ok) throw new Error("搜索失败");
+    
+    const experiments = await response.json();
+    currentExperiments = experiments;
+    renderExperimentsList(experiments);
+  } catch (error) {
+    console.error("Search error:", error);
+    showErrorMessage("搜索失败：" + error.message);
+  }
+}
+
+function renderExperimentsList(experiments) {
+  const experimentsList = document.getElementById("experiments-list");
+  const resultsCount = document.getElementById("results-count");
+  
+  if (!experimentsList) return;
+
+  resultsCount.textContent = `共 ${experiments.length} 个实验`;
+
+  if (experiments.length === 0) {
+    experimentsList.innerHTML = '<div class="empty-results">未找到匹配的实验</div>';
+    return;
+  }
+
+  const html = experiments.map(exp => `
+    <div class="experiment-item" data-path="${exp.path}">
+      <div class="experiment-name">${escapeHtml(exp.name || '未命名实验')}</div>
+      <div class="experiment-meta">
+        <span class="experiment-meta-item">时间: ${exp.timestamp || '-'}</span>
+        <span class="experiment-meta-item">状态: ${exp.status || '-'}</span>
+      </div>
+      ${exp.tags && exp.tags.length > 0 ? `
+        <div class="experiment-tags">
+          ${exp.tags.map(tag => `<span class="experiment-tag">${escapeHtml(tag)}</span>`).join('')}
+        </div>
+      ` : ''}
+      ${exp.description ? `
+        <div class="experiment-description" style="font-size: 12px; color: var(--text-secondary); margin: 4px 0;">
+          ${escapeHtml(exp.description)}
+        </div>
+      ` : ''}
+      <div class="experiment-path">${escapeHtml(exp.path)}</div>
+    </div>
+  `).join('');
+
+  experimentsList.innerHTML = html;
+
+  // Add click handlers
+  experimentsList.querySelectorAll('.experiment-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      // Remove previous selection
+      experimentsList.querySelectorAll('.experiment-item').forEach(el => 
+        el.classList.remove('selected'));
+      
+      // Mark as selected
+      item.classList.add('selected');
+      
+      const path = item.dataset.path;
+      selectedExperiment = experiments.find(exp => exp.path === path);
+      await loadExperimentFiles(path);
+    });
+  });
+}
+
+async function loadExperimentFiles(experimentPath) {
+  try {
+    const encodedPath = encodeURIComponent(experimentPath);
+    const response = await fetch(`/api/experiments/${encodedPath}/files`);
+    if (!response.ok) throw new Error("获取文件列表失败");
+    
+    const files = await response.json();
+    currentExperimentFiles = files;
+    renderFilesList(files);
+    
+    // Update preview header
+    const previewPath = document.getElementById("preview-path");
+    if (previewPath) {
+      previewPath.textContent = experimentPath;
+    }
+  } catch (error) {
+    console.error("Load files error:", error);
+    showErrorMessage("获取文件列表失败：" + error.message);
+  }
+}
+
+function renderFilesList(files) {
+  const previewContent = document.getElementById("preview-content");
+  if (!previewContent) return;
+
+  if (files.length === 0) {
+    previewContent.innerHTML = '<div class="empty-preview">实验目录为空</div>';
+    return;
+  }
+
+  const html = `
+    <div class="file-tree">
+      ${files.map(file => `
+        <div class="file-item" data-path="${file.absolute_path}" data-type="${file.type}">
+          <span class="file-icon">${file.type === 'directory' ? '📁' : '📄'}</span>
+          <span class="file-name">${escapeHtml(file.name)}</span>
+          ${file.size !== undefined ? `<span class="file-size">${formatFileSize(file.size)}</span>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    <div class="file-content-viewer" id="file-content-viewer" style="display: none;"></div>
+  `;
+
+  previewContent.innerHTML = html;
+
+  // Add click handlers for files
+  previewContent.querySelectorAll('.file-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      if (item.dataset.type === 'file') {
+        // Remove previous selection
+        previewContent.querySelectorAll('.file-item').forEach(el => 
+          el.classList.remove('selected'));
+        
+        // Mark as selected
+        item.classList.add('selected');
+        
+        await loadFileContent(item.dataset.path);
+      }
+    });
+  });
+}
+
+async function loadFileContent(filePath) {
+  const contentViewer = document.getElementById("file-content-viewer");
+  if (!contentViewer) return;
+
+  try {
+    const response = await fetch(`/api/files/read?file_path=${encodeURIComponent(filePath)}`);
+    if (!response.ok) throw new Error("读取文件失败");
+    
+    const fileData = await response.json();
+    
+    let html = `
+      <div class="file-info">
+        文件: ${escapeHtml(filePath)}<br>
+        大小: ${formatFileSize(fileData.size)}<br>
+        编码: ${fileData.encoding}
+      </div>
+    `;
+
+    if (fileData.type === 'text' && fileData.content !== null) {
+      html += `<pre>${escapeHtml(fileData.content)}</pre>`;
+    } else {
+      html += `<div class="file-placeholder">${fileData.message || '无法预览此文件类型'}</div>`;
+    }
+
+    contentViewer.innerHTML = html;
+    contentViewer.style.display = 'block';
+  } catch (error) {
+    console.error("Load file content error:", error);
+    contentViewer.innerHTML = `<div class="file-error">读取文件失败: ${error.message}</div>`;
+    contentViewer.style.display = 'block';
+  }
+}
+
+function clearFilters() {
+  const form = document.getElementById("query-form");
+  if (form) {
+    form.reset();
+  }
+  
+  // Clear results
+  const experimentsList = document.getElementById("experiments-list");
+  const previewContent = document.getElementById("preview-content");
+  const resultsCount = document.getElementById("results-count");
+  
+  if (experimentsList) {
+    experimentsList.innerHTML = '<div class="empty-results">请输入查询条件并点击查询按钮</div>';
+  }
+  
+  if (previewContent) {
+    previewContent.innerHTML = '<div class="empty-preview">请选择实验查看文件列表</div>';
+  }
+  
+  if (resultsCount) {
+    resultsCount.textContent = '共 0 个实验';
+  }
+  
+  const previewPath = document.getElementById("preview-path");
+  if (previewPath) {
+    previewPath.textContent = '';
+  }
+  
+  currentExperiments = [];
+  currentExperimentFiles = [];
+  selectedExperiment = null;
+}
+
+function switchInterface(interfaceName) {
+  const dashboardInterface = document.getElementById("dashboard-interface");
+  const queryInterface = document.getElementById("query-interface");
+  const appTitle = document.querySelector(".app-title");
+  
+  if (interfaceName === "dashboard") {
+    dashboardInterface?.classList.remove("hidden");
+    queryInterface?.classList.add("hidden");
+    if (appTitle) appTitle.textContent = "EXP 调度器仪表盘";
+    
+    // Resume dashboard auto-refresh
+    restartAutoRefresh();
+  } else if (interfaceName === "query") {
+    dashboardInterface?.classList.add("hidden");
+    queryInterface?.classList.remove("hidden");
+    if (appTitle) appTitle.textContent = "EXP 查询界面";
+    
+    // Stop dashboard auto-refresh to save resources
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+}
+
+function setupInterfaceSelector() {
+  const selector = document.getElementById("interface-selector");
+  if (selector) {
+    selector.addEventListener("change", (e) => {
+      switchInterface(e.target.value);
+    });
+  }
+}
+
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function showErrorMessage(message) {
+  // Simple error display - could be enhanced with a proper notification system
+  console.error(message);
+  alert(message);
 }
 
