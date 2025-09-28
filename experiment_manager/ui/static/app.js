@@ -703,10 +703,12 @@ function createLogPanel(record, section) {
   const controls = document.createElement("div");
   controls.className = "log-header-actions";
   const deleteBtn = createIconButton("🗑", "删除记录", async () => {
-    if (!panel || deleteBtn.disabled) return;
+    if (deleteBtn.disabled) return;
+    const currentPanel = logPanels.get(record.id); // Look up panel dynamically
+    if (!currentPanel) return;
     deleteBtn.disabled = true;
     try {
-      await handleDelete(panel.section, panel.taskId);
+      await handleDelete(currentPanel.section, currentPanel.taskId);
     } finally {
       setTimeout(() => {
         deleteBtn.disabled = false;
@@ -714,10 +716,12 @@ function createLogPanel(record, section) {
     }
   }, "danger");
   const retryBtn = createIconButton("↻", "重跑任务", async () => {
-    if (!panel || retryBtn.disabled) return;
+    if (retryBtn.disabled) return;
+    const currentPanel = logPanels.get(record.id); // Look up panel dynamically
+    if (!currentPanel) return;
     retryBtn.disabled = true;
     try {
-      await handleRetry(panel.taskId);
+      await handleRetry(currentPanel.taskId);
     } finally {
       setTimeout(() => {
         retryBtn.disabled = false;
@@ -726,8 +730,9 @@ function createLogPanel(record, section) {
   }, "warning");
   retryBtn.classList.add("hidden");
   const toggleBtn = createIconButton("ℹ", "查看基本信息", () => {
-    if (panel) {
-      switchPanelMode(panel);
+    const currentPanel = logPanels.get(record.id); // Look up panel dynamically
+    if (currentPanel) {
+      switchPanelMode(currentPanel);
     }
   });
   const closeBtn = createIconButton("✕", "关闭面板", () => closeLogPanel(record.id));
