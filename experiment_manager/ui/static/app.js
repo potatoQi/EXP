@@ -397,7 +397,14 @@ async function handleDelete(section, taskId) {
   // Auto-close monitoring panel when experiment is deleted
   closeLogPanel(taskId);
   
+  // Force immediate refresh and ensure state is updated
   await refreshState();
+  
+  // Add a small delay to ensure UI is updated, then trigger another refresh
+  setTimeout(async () => {
+    await refreshState();
+  }, 100);
+  
   restartAutoRefresh();
 }
 

@@ -10,6 +10,9 @@
   --warning: #facc15;
   --error: #f87171;
   --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --toolbar-bg: rgba(15, 23, 42, 0.95);
+  --border-color: rgba(148, 163, 184, 0.1);
+  --hover-bg: rgba(56, 189, 248, 0.12);
 }
 
 [data-theme="light"] {
@@ -24,6 +27,9 @@
   --warning: #ca8a04;
   --error: #dc2626;
   --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --toolbar-bg: rgba(248, 250, 252, 0.95);
+  --border-color: rgba(71, 85, 105, 0.15);
+  --hover-bg: rgba(14, 165, 233, 0.08);
 }
 
 * {
@@ -48,7 +54,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid var(--bg-highlight);
   gap: 16px;
 }
 
@@ -91,7 +97,7 @@ button {
 }
 
 button:hover {
-  background: #475569;
+  background: var(--bg-highlight);
 }
 
 button.active {
@@ -116,12 +122,12 @@ button.active {
 
 .app-footer {
   padding: 10px 20px;
-  background: rgba(15, 23, 42, 0.95);
+  background: var(--toolbar-bg);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid #1f2937;
+  border-top: 1px solid var(--bg-highlight);
   font-size: 0.78rem;
   color: var(--text-secondary);
 }
@@ -153,7 +159,7 @@ button.active {
   background: var(--bg-panel);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -163,7 +169,7 @@ button.active {
 .status-panel h2 {
   margin: 0;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--border-color);
   font-size: 0.92rem;
 }
 
@@ -184,7 +190,7 @@ button.active {
 
 .task-item {
   padding: 8px 14px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.07);
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -204,7 +210,7 @@ button.active {
 
 .task-item:hover,
 .task-item.active {
-  background: rgba(56, 189, 248, 0.12);
+  background: var(--hover-bg);
 }
 
 .task-header {
@@ -318,7 +324,7 @@ button.active {
 .log-panel {
   background: var(--bg-panel);
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -330,7 +336,7 @@ button.active {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .log-header-actions {
@@ -375,7 +381,7 @@ button.active {
 
 .info-section {
   background: rgba(15, 23, 42, 0.4);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 10px 12px;
 }
@@ -449,7 +455,7 @@ button.active {
   padding: 8px 12px;
   font-size: 0.7rem;
   color: var(--text-secondary);
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-top: 1px solid var(--border-color);
 }
 
 .log-panel .icon-btn {
