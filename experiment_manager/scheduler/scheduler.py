@@ -7,7 +7,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -464,7 +464,9 @@ class ExperimentScheduler:
         if isinstance(value, datetime):
             if value.tzinfo is None:
                 value = value.replace(tzinfo=timezone.utc)
-            return value.astimezone(timezone.utc).strftime(ISO_TIMESTAMP)
+            # Use Asia/Shanghai timezone (UTC+8)
+            shanghai_tz = timezone(timedelta(hours=8))
+            return value.astimezone(shanghai_tz).strftime(ISO_TIMESTAMP)
         return str(value)
 
     @staticmethod
@@ -476,7 +478,9 @@ class ExperimentScheduler:
         if isinstance(value, datetime):
             if value.tzinfo is None:
                 value = value.replace(tzinfo=timezone.utc)
-            return value.astimezone(timezone.utc).strftime(ISO_TIMESTAMP)
+            # Use Asia/Shanghai timezone (UTC+8)
+            shanghai_tz = timezone(timedelta(hours=8))
+            return value.astimezone(shanghai_tz).strftime(ISO_TIMESTAMP)
         return str(value)
 
     # ------------------------------------------------------------------

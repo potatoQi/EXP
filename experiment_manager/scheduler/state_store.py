@@ -70,7 +70,7 @@ class SchedulerStateStore:
         summary: Optional[Dict[str, Any]] = None,
     ) -> None:
         data = {
-            "updated_at": datetime.now(tz=timezone.utc).strftime(ISO_TIMESTAMP),
+            "updated_at": datetime.now(tz=timezone(timedelta(hours=8))).strftime(ISO_TIMESTAMP),
             "pending": list(pending),
             "running": list(running),
             "finished": list(finished),
@@ -107,7 +107,7 @@ class SchedulerStateStore:
     # ------------------------------------------------------------------
     def _initial_state(self) -> Dict[str, Any]:
         return {
-            "updated_at": datetime.now(tz=timezone.utc).strftime(ISO_TIMESTAMP),
+            "updated_at": datetime.now(tz=timezone(timedelta(hours=8))).strftime(ISO_TIMESTAMP),
             "pending": [],
             "running": [],
             "finished": [],
