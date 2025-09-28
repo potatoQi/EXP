@@ -7,3 +7,13 @@ dependencies = [
     "toml>=0.10.2",
     "psutil>=5.8.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests", "toy_example"]
+python_files = ["test_*.py"]
