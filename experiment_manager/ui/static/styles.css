@@ -21,10 +21,10 @@ body {
   font-family: var(--font);
   background: var(--bg);
   color: var(--text);
-  min-height: 100vh;
+  height: 100vh; /* Use viewport height for strict height constraint */
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Removed overflow: hidden to allow proper scrolling */
 }
 
 .app-toolbar {
@@ -115,10 +115,21 @@ button.active {
 .app-main {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+/* Dashboard interface specific layout */
+#dashboard-interface {
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 14px;
   padding: 12px 18px 10px;
+}
+
+#dashboard-interface.hidden {
+  display: none !important;
 }
 
 .sidebar {
@@ -444,7 +455,7 @@ button.active {
 }
 
 @media (max-width: 1024px) {
-  .app-main {
+  #dashboard-interface {
     grid-template-columns: 1fr;
     padding: 12px;
   }
@@ -462,4 +473,369 @@ button.active {
   .toolbar-right {
     gap: 8px;
   }
+}
+
+/* Interface Selector */
+.interface-selector {
+  margin-right: 16px;
+}
+
+.interface-dropdown {
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-highlight);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 120px;
+  cursor: pointer;
+}
+
+.interface-dropdown:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.interface-dropdown option {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+/* Interface Layout */
+.interface-content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.interface-content.hidden {
+  display: none !important;
+}
+
+#query-interface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0; /* Essential for proper flexbox scrolling */
+  height: 100%; /* Ensure full height */
+}
+
+/* Query Interface */
+.query-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%; /* Ensure containers have defined height */
+}
+
+.query-filters {
+  width: 300px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--bg-highlight);
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.query-filters h2 {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: var(--text);
+  border-bottom: 1px solid var(--bg-highlight);
+  padding-bottom: 10px;
+}
+
+.filter-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-group label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.filter-group input {
+  background: var(--bg);
+  border: 1px solid var(--bg-highlight);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.filter-group input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.filter-group input::placeholder {
+  color: var(--text-secondary);
+}
+
+.query-btn, .clear-btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.query-btn {
+  background: var(--accent);
+  color: white;
+}
+
+.query-btn:hover {
+  background: #0ea5e9;
+}
+
+.clear-btn {
+  background: var(--bg-highlight);
+  color: var(--text);
+}
+
+.clear-btn:hover {
+  background: #475569;
+}
+
+.query-results {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--bg-highlight);
+  height: 100%; /* Ensure full container height */
+  min-height: 0; /* Enable flex child to shrink */
+}
+
+.results-header {
+  padding: 20px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--bg-highlight);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0; /* Prevent header from shrinking and taking space from content */
+}
+
+.results-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.results-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+  min-height: 0; /* Important for proper flexbox scrolling */
+}
+
+.experiments-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.experiment-item {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--bg-highlight);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.experiment-item:hover {
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.experiment-item.selected {
+  background: rgba(56, 189, 248, 0.2);
+}
+
+.experiment-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0 0 8px 0;
+}
+
+.experiment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.experiment-meta-item {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.experiment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.experiment-tag {
+  background: var(--bg-highlight);
+  color: var(--text);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.experiment-path {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.empty-results, .empty-preview {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.file-preview {
+  flex: 1;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--bg-highlight);
+}
+
+.preview-header {
+  padding: 20px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--bg-highlight);
+}
+
+.preview-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.preview-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.file-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-item {
+  padding: 8px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.file-item.selected {
+  background: rgba(56, 189, 248, 0.2);
+}
+
+.file-icon {
+  font-size: 14px;
+  width: 16px;
+  text-align: center;
+}
+
+.file-name {
+  font-size: 14px;
+  color: var(--text);
+  flex: 1;
+}
+
+.file-size {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.file-content-viewer {
+  padding: 20px;
+  max-height: 400px;
+  overflow-y: auto;
+  border-top: 1px solid var(--bg-highlight);
+}
+
+.file-content-viewer pre {
+  background: var(--bg);
+  color: var(--text);
+  padding: 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.file-info {
+  background: var(--bg-highlight);
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.export-btn {
+  background: var(--success);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.export-btn:hover {
+  background: #16a34a;
+}
+
+.export-btn:disabled {
+  background: var(--bg-highlight);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+#results-count {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+#preview-path {
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-all;
 }

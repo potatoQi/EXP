@@ -9,6 +9,12 @@
 <body>
   <header class="app-toolbar">
     <div class="toolbar-left">
+      <div class="interface-selector">
+        <select id="interface-selector" class="interface-dropdown">
+          <option value="dashboard">仪表盘</option>
+          <option value="query">查询界面</option>
+        </select>
+      </div>
       <span class="app-title">EXP 调度器仪表盘</span>
     </div>
     <div class="toolbar-right">
@@ -36,27 +42,91 @@
     </div>
   </header>
   <main class="app-main">
-    <aside class="sidebar">
-      <section class="status-panel" data-section="pending">
-        <h2>Pending</h2>
-        <div class="panel-body" id="pending-list"></div>
+    <!-- Dashboard Interface -->
+    <div id="dashboard-interface" class="interface-content">
+      <aside class="sidebar">
+        <section class="status-panel" data-section="pending">
+          <h2>Pending</h2>
+          <div class="panel-body" id="pending-list"></div>
+        </section>
+        <section class="status-panel" data-section="running">
+          <h2>Running</h2>
+          <div class="panel-body" id="running-list"></div>
+        </section>
+        <section class="status-panel" data-section="finished">
+          <h2>Finished</h2>
+          <div class="panel-body" id="finished-list"></div>
+        </section>
+        <section class="status-panel" data-section="errors">
+          <h2>Error</h2>
+          <div class="panel-body" id="errors-list"></div>
+        </section>
+      </aside>
+      <section class="content">
+        <div class="log-grid columns-1" id="log-grid"></div>
       </section>
-      <section class="status-panel" data-section="running">
-        <h2>Running</h2>
-        <div class="panel-body" id="running-list"></div>
-      </section>
-      <section class="status-panel" data-section="finished">
-        <h2>Finished</h2>
-        <div class="panel-body" id="finished-list"></div>
-      </section>
-      <section class="status-panel" data-section="errors">
-        <h2>Error</h2>
-        <div class="panel-body" id="errors-list"></div>
-      </section>
-    </aside>
-    <section class="content">
-      <div class="log-grid columns-1" id="log-grid"></div>
-    </section>
+    </div>
+    
+    <!-- Query Interface -->
+    <div id="query-interface" class="interface-content hidden">
+      <div class="query-layout">
+        <aside class="query-filters">
+          <h2>查询条件</h2>
+          <form id="query-form" class="filter-form">
+            <div class="filter-group">
+              <label for="name-pattern">实验名正则匹配:</label>
+              <input type="text" id="name-pattern" placeholder="例: model_.*_v1">
+            </div>
+            
+            <div class="filter-group">
+              <label for="tags-input">标签 (逗号分隔):</label>
+              <input type="text" id="tags-input" placeholder="例: deep-learning, classification">
+            </div>
+            
+            <div class="filter-group">
+              <label for="description-input">描述关键词:</label>
+              <input type="text" id="description-input" placeholder="例: baseline">
+            </div>
+            
+            <div class="filter-group">
+              <label for="start-time">开始时间:</label>
+              <input type="datetime-local" id="start-time">
+            </div>
+            
+            <div class="filter-group">
+              <label for="end-time">结束时间:</label>
+              <input type="datetime-local" id="end-time">
+            </div>
+            
+            <button type="submit" class="query-btn">查询</button>
+            <button type="button" id="clear-filters" class="clear-btn">清除</button>
+          </form>
+        </aside>
+        
+        <section class="file-preview">
+          <div class="preview-header">
+            <h2>文件预览</h2>
+            <span id="preview-path"></span>
+          </div>
+          <div class="preview-content" id="preview-content">
+            <div class="empty-preview">请选择实验查看文件列表</div>
+          </div>
+        </section>
+        
+        <section class="query-results">
+          <div class="results-header">
+            <h2>查询结果</h2>
+            <span id="results-count">共 0 个实验</span>
+            <button id="export-results" class="export-btn" style="display: none;" title="导出实验路径">📋 导出</button>
+          </div>
+          <div class="results-content">
+            <div class="experiments-list" id="experiments-list">
+              <div class="empty-results">请输入查询条件并点击查询按钮</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   </main>
   <footer class="app-footer">
     <span id="summary"></span>
