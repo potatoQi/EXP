@@ -365,6 +365,10 @@ async function handleDelete(section, taskId) {
   } else if (section === "errors") {
     await sendCommand("remove_error", { id: taskId });
   }
+  
+  // Auto-close monitoring panel when experiment is deleted
+  closeLogPanel(taskId);
+  
   await refreshState();
   restartAutoRefresh();
 }
@@ -569,9 +573,10 @@ async function openLogPanel(taskId, runId = null) {
   updatePanelActionAvailability(panel);
   const targetRun = runId || panel.runId || info.record.run_id || null;
 
+  // Move panel to the front (first position) instead of back
   logOrder = logOrder.filter((id) => id !== taskId);
-  logOrder.push(taskId);
-  logPage = Math.floor((logOrder.length - 1) / layoutColumns);
+  logOrder.unshift(taskId);
+  logPage = 0; // Go to first page to show the newly added panel
   renderLogGrid();
   setActiveTask(taskId);
   switchPanelMode(panel, "log");
@@ -751,9 +756,12 @@ function updatePanelActionAvailability(panel) {
   else if (section === "errors") deleteLabel = "删除错误记录";
   panel.deleteBtn.title = deleteLabel;
   panel.deleteBtn.setAttribute("aria-label", deleteLabel);
+  // Ensure buttons are always enabled
+  panel.deleteBtn.disabled = false;
   if (panel.retryBtn) {
     const shouldShow = section === "errors";
     panel.retryBtn.classList.toggle("hidden", !shouldShow);
+    panel.retryBtn.disabled = false;
   }
 }
 
