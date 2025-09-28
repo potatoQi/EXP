@@ -12,6 +12,20 @@
   --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-panel: #f8fafc;
+  --bg-highlight: #e2e8f0;
+  --text: #0f172a;
+  --text-secondary: #64748b;
+  --accent: #0ea5e9;
+  --success: #16a34a;
+  --warning: #ca8a04;
+  --error: #dc2626;
+  --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -296,7 +310,8 @@ button.active {
 }
 
 .log-grid.columns-4 .log-panel {
-  max-height: 50vh;
+  max-height: none;
+  height: 100%;
   overflow: hidden;
 }
 

@@ -10,12 +10,39 @@ let activeTaskId = null;
 let refreshJob = null;
 const INFO_REFRESH_INTERVAL = 15000;
 
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'light' ? null : 'light';
+  
+  if (newTheme) {
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('theme', 'dark');
+  }
+}
+
+function loadTheme() {
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+}
+
 function setupControls() {
   const refreshButton = document.getElementById("refresh-button");
   if (refreshButton) {
     refreshButton.addEventListener("click", () => {
       refreshState();
       restartAutoRefresh();
+    });
+  }
+
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    themeToggle.addEventListener("click", () => {
+      toggleTheme();
     });
   }
 
@@ -53,6 +80,7 @@ function setupControls() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  loadTheme();
   setupControls();
   refreshState();
   startAutoRefresh();
