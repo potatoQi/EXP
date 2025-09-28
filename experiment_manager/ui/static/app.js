@@ -1031,30 +1031,11 @@ function renderFilesList(files) {
     return;
   }
 
-  // Sort files to show directories first, then files, with proper nesting
-  const sortedFiles = files.sort((a, b) => {
-    const aDepth = (a.path.match(/\//g) || []).length;
-    const bDepth = (b.path.match(/\//g) || []).length;
-    
-    // Sort by depth first, then by type (directories first), then by name
-    if (aDepth !== bDepth) return aDepth - bDepth;
-    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-    return a.path.localeCompare(b.path);
-  });
-
+  // Build hierarchical tree structure
+  const fileTree = buildFileTree(files);
   const html = `
     <div class="file-tree">
-      ${sortedFiles.map(file => {
-        const depth = (file.path.match(/\//g) || []).length;
-        const indentLevel = depth * 20; // 20px per level
-        return `
-          <div class="file-item" data-path="${file.absolute_path}" data-type="${file.type}" style="padding-left: ${20 + indentLevel}px;">
-            <span class="file-icon">${file.type === 'directory' ? '📁' : getFileIcon(file.name)}</span>
-            <span class="file-name">${escapeHtml(file.name)}</span>
-            ${file.size !== undefined ? `<span class="file-size">${formatFileSize(file.size)}</span>` : ''}
-          </div>
-        `;
-      }).join('')}
+      ${renderFileTree(fileTree, 0)}
     </div>
     <div class="file-content-viewer" id="file-content-viewer" style="display: none;"></div>
   `;
@@ -1078,20 +1059,66 @@ function renderFilesList(files) {
   });
 }
 
+function buildFileTree(files) {
+  const tree = {};
+  
+  files.forEach(file => {
+    const parts = file.path.split('/');
+    let current = tree;
+    
+    // Build path structure
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!current[part]) {
+        current[part] = {
+          name: part,
+          type: i === parts.length - 1 ? file.type : 'directory',
+          absolutePath: file.absolute_path,
+          size: file.size,
+          children: {}
+        };
+      }
+      current = current[part].children;
+    }
+  });
+  
+  return tree;
+}
+
+function renderFileTree(tree, depth) {
+  const indentLevel = depth * 20;
+  let html = '';
+  
+  // Sort entries: directories first, then files
+  const entries = Object.entries(tree).sort(([, a], [, b]) => {
+    if (a.type !== b.type) {
+      return a.type === 'directory' ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+  
+  entries.forEach(([name, node]) => {
+    const icon = node.type === 'directory' ? '📁' : '📄';
+    
+    html += `
+      <div class="file-item" data-path="${node.absolutePath}" data-type="${node.type}" style="padding-left: ${20 + indentLevel}px;">
+        <span class="file-icon">${icon}</span>
+        <span class="file-name">${escapeHtml(node.name)}</span>
+        ${node.size !== undefined ? `<span class="file-size">${formatFileSize(node.size)}</span>` : ''}
+      </div>
+    `;
+    
+    // Recursively render children
+    if (node.type === 'directory' && Object.keys(node.children).length > 0) {
+      html += renderFileTree(node.children, depth + 1);
+    }
+  });
+  
+  return html;
+}
+
 function getFileIcon(filename) {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'json': return '🔧';
-    case 'log': return '📜';
-    case 'csv': return '📊';
-    case 'txt': return '📄';
-    case 'py': return '🐍';
-    case 'yaml': case 'yml': return '⚙️';
-    case 'md': return '📝';
-    case 'png': case 'jpg': case 'jpeg': case 'gif': return '🖼️';
-    case 'pdf': return '📕';
-    default: return '📄';
-  }
+  return '📄'; // Simple file icon for all files
 }
 
 async function loadFileContent(filePath) {
@@ -1202,11 +1229,17 @@ function switchInterface(interfaceName) {
   const dashboardInterface = document.getElementById("dashboard-interface");
   const queryInterface = document.getElementById("query-interface");
   const appTitle = document.querySelector(".app-title");
+  const layoutSwitch = document.querySelector(".layout-switch");
+  const logControls = document.getElementById("log-controls");
   
   if (interfaceName === "dashboard") {
     dashboardInterface?.classList.remove("hidden");
     queryInterface?.classList.add("hidden");
     if (appTitle) appTitle.textContent = "EXP 调度器仪表盘";
+    
+    // Show dashboard controls
+    if (layoutSwitch) layoutSwitch.style.display = "flex";
+    if (logControls) logControls.style.display = "flex";
     
     // Resume dashboard auto-refresh
     restartAutoRefresh();
@@ -1214,6 +1247,10 @@ function switchInterface(interfaceName) {
     dashboardInterface?.classList.add("hidden");
     queryInterface?.classList.remove("hidden");
     if (appTitle) appTitle.textContent = "EXP 查询界面";
+    
+    // Hide dashboard controls
+    if (layoutSwitch) layoutSwitch.style.display = "none";
+    if (logControls) logControls.style.display = "none";
     
     // Stop dashboard auto-refresh to save resources
     if (pollTimer) {
