@@ -103,18 +103,6 @@
           </form>
         </aside>
         
-        <section class="query-results">
-          <div class="results-header">
-            <h2>查询结果</h2>
-            <span id="results-count">共 0 个实验</span>
-          </div>
-          <div class="results-content">
-            <div class="experiments-list" id="experiments-list">
-              <div class="empty-results">请输入查询条件并点击查询按钮</div>
-            </div>
-          </div>
-        </section>
-        
         <section class="file-preview">
           <div class="preview-header">
             <h2>文件预览</h2>
@@ -122,6 +110,19 @@
           </div>
           <div class="preview-content" id="preview-content">
             <div class="empty-preview">请选择实验查看文件列表</div>
+          </div>
+        </section>
+        
+        <section class="query-results">
+          <div class="results-header">
+            <h2>查询结果</h2>
+            <span id="results-count">共 0 个实验</span>
+            <button id="export-results" class="export-btn" style="display: none;" title="导出实验路径">📋 导出</button>
+          </div>
+          <div class="results-content">
+            <div class="experiments-list" id="experiments-list">
+              <div class="empty-results">请输入查询条件并点击查询按钮</div>
+            </div>
           </div>
         </section>
       </div>

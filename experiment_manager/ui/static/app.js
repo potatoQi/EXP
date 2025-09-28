@@ -878,6 +878,7 @@ function setupQueryInterface() {
   const clearFiltersBtn = document.getElementById("clear-filters");
   const experimentsList = document.getElementById("experiments-list");
   const previewContent = document.getElementById("preview-content");
+  const exportBtn = document.getElementById("export-results");
 
   if (queryForm) {
     queryForm.addEventListener("submit", async (e) => {
@@ -889,6 +890,12 @@ function setupQueryInterface() {
   if (clearFiltersBtn) {
     clearFiltersBtn.addEventListener("click", () => {
       clearFilters();
+    });
+  }
+
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      exportExperimentPaths();
     });
   }
 }
@@ -934,10 +941,20 @@ async function performSearch() {
 function renderExperimentsList(experiments) {
   const experimentsList = document.getElementById("experiments-list");
   const resultsCount = document.getElementById("results-count");
+  const exportBtn = document.getElementById("export-results");
   
   if (!experimentsList) return;
 
   resultsCount.textContent = `共 ${experiments.length} 个实验`;
+
+  // Show/hide export button based on results
+  if (exportBtn) {
+    if (experiments.length > 0) {
+      exportBtn.style.display = "flex";
+    } else {
+      exportBtn.style.display = "none";
+    }
+  }
 
   if (experiments.length === 0) {
     experimentsList.innerHTML = '<div class="empty-results">未找到匹配的实验</div>';
@@ -1014,15 +1031,30 @@ function renderFilesList(files) {
     return;
   }
 
+  // Sort files to show directories first, then files, with proper nesting
+  const sortedFiles = files.sort((a, b) => {
+    const aDepth = (a.path.match(/\//g) || []).length;
+    const bDepth = (b.path.match(/\//g) || []).length;
+    
+    // Sort by depth first, then by type (directories first), then by name
+    if (aDepth !== bDepth) return aDepth - bDepth;
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+
   const html = `
     <div class="file-tree">
-      ${files.map(file => `
-        <div class="file-item" data-path="${file.absolute_path}" data-type="${file.type}">
-          <span class="file-icon">${file.type === 'directory' ? '📁' : '📄'}</span>
-          <span class="file-name">${escapeHtml(file.name)}</span>
-          ${file.size !== undefined ? `<span class="file-size">${formatFileSize(file.size)}</span>` : ''}
-        </div>
-      `).join('')}
+      ${sortedFiles.map(file => {
+        const depth = (file.path.match(/\//g) || []).length;
+        const indentLevel = depth * 20; // 20px per level
+        return `
+          <div class="file-item" data-path="${file.absolute_path}" data-type="${file.type}" style="padding-left: ${20 + indentLevel}px;">
+            <span class="file-icon">${file.type === 'directory' ? '📁' : getFileIcon(file.name)}</span>
+            <span class="file-name">${escapeHtml(file.name)}</span>
+            ${file.size !== undefined ? `<span class="file-size">${formatFileSize(file.size)}</span>` : ''}
+          </div>
+        `;
+      }).join('')}
     </div>
     <div class="file-content-viewer" id="file-content-viewer" style="display: none;"></div>
   `;
@@ -1044,6 +1076,22 @@ function renderFilesList(files) {
       }
     });
   });
+}
+
+function getFileIcon(filename) {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'json': return '🔧';
+    case 'log': return '📜';
+    case 'csv': return '📊';
+    case 'txt': return '📄';
+    case 'py': return '🐍';
+    case 'yaml': case 'yml': return '⚙️';
+    case 'md': return '📝';
+    case 'png': case 'jpg': case 'jpeg': case 'gif': return '🖼️';
+    case 'pdf': return '📕';
+    default: return '📄';
+  }
 }
 
 async function loadFileContent(filePath) {
@@ -1079,6 +1127,39 @@ async function loadFileContent(filePath) {
   }
 }
 
+function exportExperimentPaths() {
+  if (!currentExperiments || currentExperiments.length === 0) {
+    showErrorMessage("没有可导出的实验数据");
+    return;
+  }
+
+  try {
+    // Create text content with experiment paths
+    const pathsText = currentExperiments.map(exp => exp.path).join('\n');
+    
+    // Create and download file
+    const blob = new Blob([pathsText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `experiment_paths_${new Date().toISOString().split('T')[0]}.txt`;
+    
+    // Trigger download
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up object URL
+    URL.revokeObjectURL(url);
+    
+    console.log(`Exported ${currentExperiments.length} experiment paths`);
+  } catch (error) {
+    console.error("Export error:", error);
+    showErrorMessage("导出失败：" + error.message);
+  }
+}
+
 function clearFilters() {
   const form = document.getElementById("query-form");
   if (form) {
@@ -1089,6 +1170,7 @@ function clearFilters() {
   const experimentsList = document.getElementById("experiments-list");
   const previewContent = document.getElementById("preview-content");
   const resultsCount = document.getElementById("results-count");
+  const exportBtn = document.getElementById("export-results");
   
   if (experimentsList) {
     experimentsList.innerHTML = '<div class="empty-results">请输入查询条件并点击查询按钮</div>';
@@ -1100,6 +1182,10 @@ function clearFilters() {
   
   if (resultsCount) {
     resultsCount.textContent = '共 0 个实验';
+  }
+
+  if (exportBtn) {
+    exportBtn.style.display = 'none';
   }
   
   const previewPath = document.getElementById("preview-path");
