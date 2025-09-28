@@ -163,18 +163,37 @@ class SchedulerUISession:
         """
         experiments = []
         
+        # Debug: Log search parameters and base directory
+        print(f"[DEBUG] Searching in base_dir: {self.base_dir}")
+        print(f"[DEBUG] Search params - name: {name_pattern}, tags: {tags}, desc: {description}")
+        
+        if not self.base_dir.exists():
+            print(f"[DEBUG] Base directory does not exist: {self.base_dir}")
+            return experiments
+        
         # 收集所有实验目录
+        directories_found = 0
+        metadata_files_found = 0
+        
         for exp_dir in self.base_dir.glob("*"):
             if not exp_dir.is_dir() or exp_dir.name.startswith('.'):
                 continue
                 
+            directories_found += 1
+            print(f"[DEBUG] Checking directory: {exp_dir}")
+                
             metadata_file = exp_dir / "metadata.json"
             if not metadata_file.exists():
+                print(f"[DEBUG] No metadata.json in {exp_dir}")
                 continue
+                
+            metadata_files_found += 1
+            print(f"[DEBUG] Found metadata.json in {exp_dir}")
                 
             try:
                 metadata = self._load_json(metadata_file)
                 if not metadata:
+                    print(f"[DEBUG] Empty or invalid metadata in {metadata_file}")
                     continue
                     
                 # 构建实验记录
@@ -188,16 +207,23 @@ class SchedulerUISession:
                     "command": metadata.get("command", ""),
                 }
                 
+                print(f"[DEBUG] Parsed experiment: {experiment['name']} at {experiment['path']}")
+                
                 # 应用过滤条件
                 if not self._matches_filters(experiment, name_pattern, tags, description, start_time, end_time):
+                    print(f"[DEBUG] Experiment {experiment['name']} filtered out")
                     continue
                     
                 experiments.append(experiment)
+                print(f"[DEBUG] Added experiment: {experiment['name']}")
                 
-            except Exception:
+            except Exception as e:
                 # 跳过无法解析的实验
+                print(f"[DEBUG] Error parsing {metadata_file}: {e}")
                 continue
-                
+        
+        print(f"[DEBUG] Search results: {directories_found} dirs, {metadata_files_found} metadata files, {len(experiments)} experiments")
+        
         # 按时间戳排序
         experiments.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         return experiments

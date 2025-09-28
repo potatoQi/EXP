@@ -909,7 +909,18 @@ async function performSearch() {
     if (endTime) params.append("end_time", new Date(endTime).toISOString());
 
     const response = await fetch(`/api/experiments/search?${params.toString()}`);
-    if (!response.ok) throw new Error("搜索失败");
+    
+    if (!response.ok) {
+      let errorMsg = `HTTP ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMsg = errorData.detail || errorMsg;
+      } catch (e) {
+        const errorText = await response.text();
+        errorMsg = errorText || errorMsg;
+      }
+      throw new Error(errorMsg);
+    }
     
     const experiments = await response.json();
     currentExperiments = experiments;

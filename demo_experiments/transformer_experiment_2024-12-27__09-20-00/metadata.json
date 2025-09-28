@@ -1,0 +1,11 @@
+{
+  "name": "transformer_experiment",
+  "command": "python transformer_train.py --layers 6 --heads 8",
+  "timestamp": "2024-12-27T09:20:00.000000+08:00",
+  "status": "finished",
+  "tags": ["transformer", "nlp", "attention"],
+  "description": "Transformer model training with 6 layers and 8 attention heads",
+  "pid": 34567,
+  "started_at": "2024-12-27T09:20:00.000000+08:00",
+  "completed_at": "2024-12-27T11:45:00.000000+08:00"
+}

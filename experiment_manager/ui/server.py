@@ -84,18 +84,21 @@ def create_app(session: SchedulerUISession) -> FastAPI:
         end_time: Optional[str] = Query(default=None, description="结束时间 (ISO format)"),
         current: SchedulerUISession = Depends(get_session),
     ) -> JSONResponse:
-        tag_list = []
-        if tags:
-            tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
-        
-        experiments = current.search_experiments(
-            name_pattern=name_pattern,
-            tags=tag_list,
-            description=description,
-            start_time=start_time,
-            end_time=end_time,
-        )
-        return JSONResponse(experiments)
+        try:
+            tag_list = []
+            if tags:
+                tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
+            
+            experiments = current.search_experiments(
+                name_pattern=name_pattern,
+                tags=tag_list,
+                description=description,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            return JSONResponse(experiments)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"搜索失败: {str(exc)}") from exc
 
     @router.get("/experiments/{experiment_path:path}/files")
     async def get_experiment_files(
