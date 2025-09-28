@@ -49,7 +49,7 @@ body {
 
 .app-toolbar {
   padding: 12px 20px;
-  background: rgba(15, 23, 42, 0.95);
+  background: var(--toolbar-bg);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
