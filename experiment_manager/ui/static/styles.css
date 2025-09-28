@@ -316,8 +316,9 @@ button.active {
 }
 
 .log-grid.columns-4 .log-panel {
-  max-height: none;
-  height: 100%;
+  height: auto;
+  max-height: 45vh;
+  min-height: 0;
   overflow: hidden;
 }
 
