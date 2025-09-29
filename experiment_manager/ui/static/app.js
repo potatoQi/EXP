@@ -38,6 +38,14 @@ function setupControls() {
     });
   }
 
+  // Setup theme toggle
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    themeToggle.addEventListener("click", toggleTheme);
+    // Initialize theme on page load
+    initializeTheme();
+  }
+
   document.querySelectorAll(".layout-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".layout-btn").forEach((b) => b.classList.remove("active"));
@@ -1389,5 +1397,30 @@ function showErrorMessage(message) {
   // Simple error display - could be enhanced with a proper notification system
   console.error(message);
   alert(message);
+}
+
+// Theme management functions
+function initializeTheme() {
+  const savedTheme = localStorage.getItem('exp-theme') || 'dark';
+  applyTheme(savedTheme);
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  applyTheme(newTheme);
+  localStorage.setItem('exp-theme', newTheme);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    const icon = themeToggle.querySelector(".mdi");
+    if (icon) {
+      icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+      themeToggle.title = theme === 'dark' ? '切换到浅色主题' : '切换到深色主题';
+    }
+  }
 }
 

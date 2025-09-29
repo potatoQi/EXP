@@ -24,6 +24,7 @@ env/
 *.egg-info/
 dist/
 build/
+test_env/
 .mypy_cache/
 .pytest_cache/
 .coverage
