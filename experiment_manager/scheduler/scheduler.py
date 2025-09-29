@@ -82,20 +82,19 @@ class ExperimentScheduler:
             self.base_experiment_dir = (self.invocation_cwd / base_dir_path).resolve()   # 实验输出根目录
         self.auto_restart = bool(scheduler_cfg.get("auto_restart_on_error", False)) # 是否自动重启错误的实验
         self.linger_when_idle = bool(scheduler_cfg.get("linger_when_idle", True))   # 实验全部完成后是否继续等待 UI 操作命令
-        self.idle_grace_period = float(scheduler_cfg.get("idle_grace_period", 30.0))    # UI 无操作时自动退出的时间上限
 
         self.dry_run = dry_run
-        self._shutdown_requested = False
-        self._status_indicator = "running"
-        self._waiting_for_shutdown = False
+        self._status_indicator = "running"  # 调度器状态指示器：running / awaiting_shutdown / stopped
+        self._shutdown_requested = False    # 是否收到关闭调度器的请求 (收到后会变为 True, 下一轮会退出)
+        self._waiting_for_shutdown = False  # 是否正在等待关闭指令 (当全部结束空闲挂起状态时且 linger_when_idle=True 时变为 True)
 
         self._scheduled: List[ScheduledExperiment] = self._load_experiments_from_config()   # 加载所有组实验的配置
         self._pending: List[Dict[str, Any]] = []    # pending 列表
         self._active: List[Dict[str, Any]] = []     # running 列表
         self._finished: List[Dict[str, Any]] = []   # finished 列表
-        self._task_counter = 0
 
-        self.state_store = SchedulerStateStore(self.base_experiment_dir)
+        self._task_counter = 0  # 内部递增的流水号, 保证即使有重试事件也能唯一标识条目
+        self.state_store = SchedulerStateStore(self.base_experiment_dir)    # 拿到状态持久化管理器 (会把调度器的操作/状态读写到本地磁盘)
 
     # ------------------------------------------------------------------
     # 配置加载
@@ -210,9 +209,10 @@ class ExperimentScheduler:
 
         summary_printed = False
 
+        # 只要没收到 "停止调度器" 指令就一直循环
         while not self._shutdown_requested:
-            self._consume_commands()
-            self._try_launch_new_tasks()
+            self._consume_commands()    # 执行一条指令
+            self._try_launch_new_tasks()    # 尝试启动新的实验
 
             if self._active:
                 if self._waiting_for_shutdown:
@@ -220,7 +220,7 @@ class ExperimentScheduler:
                     self._status_indicator = "running"
                     self._sync_state()
                 time.sleep(self.check_interval)
-                self._harvest_finished_tasks()
+                self._harvest_finished_tasks()  # 收割一波
                 summary_printed = False
                 continue
 
@@ -234,12 +234,15 @@ class ExperimentScheduler:
                 continue
 
             if not summary_printed:
+                # 如果进到这就说明 _active 和 _pending 都空了, 打印总结
                 self._print_summary()
                 summary_printed = True
 
+            # 进到这说明既空闲, 且用户自己设置了空闲时就退出, 那么就退出
             if not self.linger_when_idle:
                 break
 
+            # 进到这说明空闲, 但用户设置了空闲时继续等待指令, 那么就把 _waiting_for_shutdown 置为 True
             if not self._waiting_for_shutdown:
                 self._waiting_for_shutdown = True
                 self._status_indicator = "awaiting_shutdown"
@@ -255,6 +258,7 @@ class ExperimentScheduler:
         self._waiting_for_shutdown = False
         self._shutdown_requested = False
         self._sync_state()
+
     # ------------------------------------------------------------------
     # 队列与执行
     # ------------------------------------------------------------------
@@ -266,11 +270,10 @@ class ExperimentScheduler:
                     "config": exp_cfg,
                     "order": order,
                     "attempt": 0,
-                    "id": self._new_task_id(),
+                    "id": self._new_task_id(),  # 唯一标识 id
                     "created_at": datetime.now(tz=LOCAL_TZ),
                 }
             )
-
         self._sync_state()
 
     def _print_plan_only(self) -> None:
@@ -416,22 +419,26 @@ class ExperimentScheduler:
     # Helper
     # ------------------------------------------------------------------
     def _sync_state(self) -> None:
-        def _build_queue(records: Iterable[Dict[str, Any]], status: str) -> List[Dict[str, Any]]:
-            output: List[Dict[str, Any]] = []
+
+        def _build_queue(
+            records: Iterable[Dict[str, Any]],  # 某个队列 (pending / running / finished / errors)
+            status: str # 这个队列对应的状态字符串值 ("pending" / "running" / "finished" / "errors")
+        ) -> List[Dict[str, Any]]:
+            output: List[Dict[str, Any]] = []   # 要把队列里每一个条目都转换成字典形式, 然后存到 output 列表里
             for item in records:
                 cfg = item["config"]
-                payload = cfg.to_payload()
+                payload = cfg.to_payload()  # 把 cfg 对象转为字典
                 payload.update(
                     {
                         "id": self._serialize_scalar(item.get("id")),
-                        "status": status,
-                        "raw_status": self._serialize_scalar(item.get("status", status)),
+                        "status": status,   # 该条目所在队列的状态
+                        "raw_status": self._serialize_scalar(item.get("status", status)),   # 条目自己的状态
                         "attempt": int(item.get("attempt", 0)),
                         "created_at": self._format_dt(item.get("created_at")),
                         "started_at": self._format_dt(item.get("started_at")),
                         "completed_at": self._format_dt(item.get("completed_at")),
                         "return_code": self._serialize_scalar(item.get("return_code")),
-                        "work_dir": self._serialize_scalar(item.get("work_dir")),
+                        "work_dir": self._serialize_scalar(item.get("work_dir")),   # 实际展开的绝对路径工作目录
                         "run_id": self._serialize_scalar(item.get("run_id")),
                     }
                 )
@@ -452,6 +459,7 @@ class ExperimentScheduler:
             "shutdown_requested": self._shutdown_requested,
         }
 
+        # 写入到文件
         self.state_store.write_state(
             pending=_build_queue(self._pending, ExperimentStatus.PENDING.value),
             running=_build_queue(self._active, ExperimentStatus.RUNNING.value),

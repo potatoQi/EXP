@@ -50,13 +50,14 @@ class SchedulerStateStore:
     """针对调度器 UI 的状态/命令持久层。"""
 
     def __init__(self, base_experiment_dir: Path):
-        self.base_dir = Path(base_experiment_dir)
+        self.base_dir = Path(base_experiment_dir)   # 实验根目录, 会把状态持久化到根目录下的 .exp_state 文件夹中
         self.state_dir = self.base_dir / ".exp_state"
         self.state_dir.mkdir(parents=True, exist_ok=True)
-        self.state_path = self.state_dir / "scheduler_state.json"
-        self.command_path = self.state_dir / "commands.json"
+        self.state_path = self.state_dir / "scheduler_state.json"   # 用来保存调度器状态
+        self.command_path = self.state_dir / "commands.json"    # 用来保存 ui 下传的命令
         self._lock = threading.Lock()
 
+        # 初始化一下 scheduler_state.json 和 commands.json 文件
         if not self.state_path.exists():
             self._write_json(self.state_path, self._initial_state())
         if not self.command_path.exists():
@@ -126,9 +127,9 @@ class SchedulerStateStore:
                 "running": 0,
                 "finished": 0,
                 "errors": 0,
-                "status_indicator": "stopped",
-                "waiting_for_shutdown": False,
-                "shutdown_requested": False,
+                "status_indicator": "stopped",  # 调度器当前状态
+                "waiting_for_shutdown": False,  # 是否处于空闲挂起闲置等待退出指令的状态
+                "shutdown_requested": False,    # 是否收到退出指令
             },
         }
 
