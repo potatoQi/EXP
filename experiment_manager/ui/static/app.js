@@ -12,6 +12,44 @@ const INFO_REFRESH_INTERVAL = 15000;
 let schedulerStatusEl = null;
 let shutdownButton = null;
 
+// Theme management
+function initTheme() {
+  const savedTheme = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+  
+  setTheme(theme);
+}
+
+function setTheme(theme) {
+  const root = document.documentElement;
+  const themeToggle = document.getElementById("theme-toggle");
+  
+  if (theme === 'light') {
+    root.setAttribute('data-theme', 'light');
+    if (themeToggle) {
+      const icon = themeToggle.querySelector('.mdi');
+      if (icon) icon.textContent = '☀️';
+      themeToggle.title = '切换至深色主题';
+    }
+  } else {
+    root.removeAttribute('data-theme');
+    if (themeToggle) {
+      const icon = themeToggle.querySelector('.mdi');
+      if (icon) icon.textContent = '🌙';
+      themeToggle.title = '切换至浅色主题';
+    }
+  }
+  
+  localStorage.setItem('theme', theme);
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  setTheme(newTheme);
+}
+
 function setupControls() {
   schedulerStatusEl = document.getElementById("scheduler-status");
   shutdownButton = document.getElementById("shutdown-button");
@@ -35,6 +73,13 @@ function setupControls() {
     refreshButton.addEventListener("click", () => {
       refreshState();
       restartAutoRefresh();
+    });
+  }
+
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    themeToggle.addEventListener("click", () => {
+      toggleTheme();
     });
   }
 
@@ -72,6 +117,7 @@ function setupControls() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  initTheme();
   setupControls();
   setupInterfaceSelector();
   setupQueryInterface();
