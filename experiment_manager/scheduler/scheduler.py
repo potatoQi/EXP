@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from experiment_manager.core import Experiment, ExperimentStatus
+from experiment_manager.integrations.lark.sync_utils import (
+    coerce_lark_config_input,
+    expand_lark_config,
+)
 from experiment_manager.utils.config import ConfigManager
 from experiment_manager.scheduler.state_store import SchedulerStateStore, LOCAL_TZ
 
@@ -39,6 +43,7 @@ class ScheduledExperiment:
     repeats: int = 1
     max_retries: int = 0
     delay_seconds: float = 0.0
+    lark_config_raw: Optional[dict] = None  # 原始 lark 配置（来自配置文件中的 lark_config / lark_url 合并）
 
     def __post_init__(self) -> None:
         self.sort_index = -self.priority
@@ -58,6 +63,7 @@ class ScheduledExperiment:
             "repeats": self.repeats,
             "max_retries": self.max_retries,
             "delay_seconds": self.delay_seconds,
+            "lark_config_raw": dict(self.lark_config_raw) if isinstance(self.lark_config_raw, dict) else None,
         }
 
 
@@ -83,15 +89,28 @@ class ExperimentScheduler:
         self.auto_restart = bool(scheduler_cfg.get("auto_restart_on_error", False)) # 是否自动重启错误的实验
         self.linger_when_idle = bool(scheduler_cfg.get("linger_when_idle", True))   # 实验全部完成后是否继续等待 UI 操作命令
 
+        # 解析 scheduler 级别 lark 配置
+        scheduler_lark_url = scheduler_cfg.get("lark_url")
+        scheduler_lark_dict = scheduler_cfg.get("lark_config") or {}
+        if scheduler_lark_url and isinstance(scheduler_lark_dict, dict):
+            scheduler_lark_dict = {**scheduler_lark_dict, "url": scheduler_lark_url}
+        elif scheduler_lark_url and not scheduler_lark_dict:
+            scheduler_lark_dict = {"url": scheduler_lark_url}
+        # 允许为空或非 dict 忽略
+        if isinstance(scheduler_lark_dict, dict) and scheduler_lark_dict:
+            self._scheduler_lark_config_raw = scheduler_lark_dict
+        else:
+            self._scheduler_lark_config_raw = None
+
         self.dry_run = dry_run
         self._status_indicator = "running"  # 调度器状态指示器：running / awaiting_shutdown / stopped
         self._shutdown_requested = False    # 是否收到关闭调度器的请求 (收到后会变为 True, 下一轮会退出)
         self._waiting_for_shutdown = False  # 是否正在等待关闭指令 (当全部结束空闲挂起状态时且 linger_when_idle=True 时变为 True)
 
-        self._scheduled: List[ScheduledExperiment] = self._load_experiments_from_config()   # 加载所有组实验的配置
-        self._pending: List[Dict[str, Any]] = []    # pending 列表
-        self._active: List[Dict[str, Any]] = []     # running 列表
-        self._finished: List[Dict[str, Any]] = []   # finished 列表
+        self._scheduled = self._load_experiments_from_config()   # 加载所有组实验的配置
+        self._pending = []    # pending 列表
+        self._active = []     # running 列表
+        self._finished = []   # finished 列表
 
         self._task_counter = 0  # 内部递增的流水号, 保证即使有重试事件也能唯一标识条目
         self.state_store = SchedulerStateStore(self.base_experiment_dir)    # 拿到状态持久化管理器 (会把调度器的操作/状态读写到本地磁盘)
@@ -132,6 +151,7 @@ class ExperimentScheduler:
                     repeats=1,
                     max_retries=exp_cfg.max_retries,
                     delay_seconds=exp_cfg.delay_seconds,
+                    lark_config_raw=exp_cfg.lark_config_raw,
                 )
                 expanded.append(clone)
 
@@ -178,6 +198,14 @@ class ExperimentScheduler:
         max_retries = int(cfg.get("max_retries", 0))
         delay_seconds = float(cfg.get("delay_seconds", 0))
 
+        # 解析实验级 lark 配置
+        exp_lark_url = cfg.get("lark_url")
+        exp_lark_dict = cfg.get("lark_config") or {}
+        if exp_lark_url and isinstance(exp_lark_dict, dict):
+            exp_lark_dict = {**exp_lark_dict, "url": exp_lark_url}
+        elif exp_lark_url and not exp_lark_dict:
+            exp_lark_dict = {"url": exp_lark_url}
+
         return ScheduledExperiment(
             name=name,
             command=command,
@@ -192,6 +220,7 @@ class ExperimentScheduler:
             repeats=repeats,
             max_retries=max_retries,
             delay_seconds=delay_seconds,
+            lark_config_raw=exp_lark_dict if isinstance(exp_lark_dict, dict) and exp_lark_dict else None,
         )
 
     # ------------------------------------------------------------------
@@ -334,6 +363,21 @@ class ExperimentScheduler:
         else:
             working_dir = config_dir
 
+        # 合并 lark 配置：scheduler 级别 < 实验级别 （后者优先覆盖）
+        merged_lark: Optional[dict] = None
+        if self._scheduler_lark_config_raw:
+            merged_lark = dict(self._scheduler_lark_config_raw)
+        if cfg.lark_config_raw:
+            if merged_lark:
+                merged_lark.update(cfg.lark_config_raw)
+            else:
+                merged_lark = dict(cfg.lark_config_raw)
+        # 规范化并展开 URL（如果有）
+        expanded_lark = None
+        if merged_lark:
+            coerced = coerce_lark_config_input(merged_lark)
+            expanded_lark = expand_lark_config(coerced) or coerced
+
         exp = Experiment(
             base_dir=base_dir,
             name=cfg.name,
@@ -343,6 +387,7 @@ class ExperimentScheduler:
             tags=cfg.tags,
             resume=cfg.resume,
             description=cfg.description,
+            lark_config=expanded_lark,
         )
 
         if cfg.delay_seconds > 0:

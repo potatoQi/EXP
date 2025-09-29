@@ -6,10 +6,17 @@ import pytest
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List
 from unittest.mock import patch
 
 from experiment_manager.core.experiment import Experiment
 from experiment_manager.core.status import ExperimentStatus
+from experiment_manager.integrations.lark.bitable import LarkBitableError
+from experiment_manager.integrations.lark.sync_utils import (
+    normalize_lark_fields,
+    resolve_lark_config,
+    sync_row_to_lark,
+)
 
 
 class TestExperimentInit:
@@ -290,3 +297,396 @@ class TestExperimentInit:
         offset = parsed.utcoffset()
         assert offset is not None
         assert offset.total_seconds() == 8 * 3600
+
+    def test_init_parses_lark_url(self, monkeypatch, temp_base_dir):
+        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
+
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: dict(env_defaults),
+        )
+
+        url = (
+            "https://example.feishu.cn/base/MockAppToken123456789abcdef"
+            "?table=tblMockTable123&view=vewMockView123"
+        )
+
+        exp = Experiment(
+            name="test_exp",
+            command="python train.py",
+            base_dir=temp_base_dir,
+            lark_config={"url": url},
+        )
+
+        expected = {
+            "app_id": "ENV_APP",
+            "app_secret": "ENV_SECRET",
+            "url": url,
+            "app_token": "MockAppToken123456789abcdef",
+            "table_id": "tblMockTable123",
+            "view_id": "vewMockView123",
+        }
+
+        assert exp.lark_config == expected
+
+        metadata_file = exp.work_dir / "metadata.json"
+        with open(metadata_file, "r", encoding="utf-8") as fh:
+            metadata = json.load(fh)
+
+        assert metadata["lark_config"] == expected
+
+    def test_resolve_lark_config_updates_tokens_from_url(self, monkeypatch, temp_base_dir):
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"},
+        )
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.ensure_project_env_loaded",
+            lambda: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.get_lark_env_config",
+            lambda: {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"},
+        )
+
+        exp = Experiment(
+            name="test_exp",
+            command="python train.py",
+            base_dir=temp_base_dir,
+            lark_config={
+                "app_token": "app_old",
+                "table_id": "tbl_old",
+                "view_id": "vew_old",
+            },
+        )
+
+        new_url = (
+            "https://example.feishu.cn/base/appNewToken"
+            "?table=tblNewTable&view=vewNewView"
+        )
+
+        logs: List[str] = []
+        resolved = resolve_lark_config(
+            {"url": new_url},
+            existing=exp.lark_config,
+            logger=lambda message: logs.append(message),
+        )
+
+        assert resolved["app_token"] == "appNewToken"
+        assert resolved["table_id"] == "tblNewTable"
+        assert resolved["view_id"] == "vewNewView"
+        assert resolved["url"] == new_url
+        assert resolved["app_id"] == "ENV_APP"
+        assert resolved["app_secret"] == "ENV_SECRET"
+
+        # 原始实验配置应该保持不变（resolve_lark_config 不会自动更新实验实例）
+        assert exp.lark_config["app_token"] == "app_old"
+        assert exp.lark_config["table_id"] == "tbl_old"
+        assert exp.lark_config["view_id"] == "vew_old"
+
+        # metadata.json 文件也应该保持原始配置不变
+        metadata_file = exp.work_dir / "metadata.json"
+        with open(metadata_file, "r", encoding="utf-8") as fh:
+            metadata = json.load(fh)
+
+        assert metadata["lark_config"]["app_token"] == "app_old"
+        assert metadata["lark_config"]["table_id"] == "tbl_old"
+
+    def test_sync_row_to_lark_success_logs_record_ids(self, monkeypatch, temp_base_dir):
+        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
+
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: dict(env_defaults),
+        )
+
+        Experiment(
+            name="test_exp",
+            command="python train.py",
+            base_dir=temp_base_dir,
+        )
+
+        logs = []
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.list_field_names",
+            lambda cfg, use_cache=True: {"metric": 1},
+        )
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.sync_record",
+            lambda cfg, fields: ["rec123"],
+        )
+
+        result = sync_row_to_lark({"metric": 1}, {
+            "app_id": "ENV_APP",
+            "app_secret": "ENV_SECRET",
+            "app_token": "app_token",
+            "table_id": "table_id",
+        }, logger=lambda message: logs.append(message))
+
+        assert result is True
+        assert logs[-1] == "飞书同步成功，记录ID: rec123"
+
+    def test_sync_row_to_lark_handles_sdk_errors(self, monkeypatch, temp_base_dir):
+        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
+
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: dict(env_defaults),
+        )
+
+        logs = []
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.list_field_names",
+            lambda cfg, use_cache=True: {"metric": 1},
+        )
+
+        def _raise_error(cfg, fields):
+            raise LarkBitableError("错误信息")
+
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.sync_record",
+            _raise_error,
+        )
+
+        result = sync_row_to_lark({"metric": 1}, {
+            "app_id": "ENV_APP",
+            "app_secret": "ENV_SECRET",
+            "app_token": "app_token",
+            "table_id": "table_id",
+        }, logger=lambda message: logs.append(message))
+
+        assert result is False
+        assert logs[-1].startswith("飞书同步失败: 错误信息")
+
+    def test_sync_row_to_lark_skips_when_field_missing(self, monkeypatch, temp_base_dir):
+        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
+
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: dict(env_defaults),
+        )
+
+        logs: List[str] = []
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.list_field_names",
+            lambda cfg, use_cache=True: {"现有字段": 1},
+        )
+
+        spy_called = {"value": False}
+
+        def _spy_sync(cfg, fields):
+            spy_called["value"] = True
+            return []
+
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.sync_record",
+            _spy_sync,
+        )
+
+        result = sync_row_to_lark({"metric": 1}, {
+            "app_id": "ENV_APP",
+            "app_secret": "ENV_SECRET",
+            "app_token": "app_token",
+            "table_id": "table_id",
+        }, logger=lambda message: logs.append(message))
+
+        assert result is False
+        assert any("未找到字段 metric" in message for message in logs)
+        assert spy_called["value"] is False
+
+    def test_sync_row_to_lark_converts_datetime_to_timestamp(self, monkeypatch, temp_base_dir):
+        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
+
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: dict(env_defaults),
+        )
+
+        exp = Experiment(
+            name="test_exp",
+            command="python train.py",
+            base_dir=temp_base_dir,
+        )
+
+        captured: Dict[str, Any] = {}
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.list_field_names",
+            lambda cfg, use_cache=True: {"recorded_at": 5},
+        )
+
+        def _capture(cfg, fields):
+            captured.update(fields)
+            return ["rec456"]
+
+        monkeypatch.setattr(
+            "experiment_manager.integrations.lark.sync_utils.sync_record",
+            _capture,
+        )
+
+        sample_dt = datetime(2025, 9, 29, 9, 30, 0)
+
+        result = sync_row_to_lark({"recorded_at": sample_dt}, {
+            "app_id": "ENV_APP",
+            "app_secret": "ENV_SECRET",
+            "app_token": "app_token",
+            "table_id": "table_id",
+        }, logger=lambda message: None)
+
+        assert result is True
+        assert captured, "字段应被发送到飞书"
+        assert isinstance(captured.get("recorded_at"), int)
+        assert captured["recorded_at"] >= 1_000_000_000_000
+
+    def test_normalize_lark_fields_converts_text_numbers(self):
+        row = {"batch": 3, "train_loss": 0.5}
+        field_types = {"batch": 1, "train_loss": 2}
+
+        normalized = normalize_lark_fields(row, field_types)
+
+        assert normalized["batch"] == "3"
+        assert isinstance(normalized["batch"], str)
+        assert normalized["train_loss"] == 0.5
+
+    def test_normalize_lark_fields_skips_empty_date_field(self):
+        row = {"recorded_at": ""}
+        field_types = {"recorded_at": 5}
+
+        normalized = normalize_lark_fields(row, field_types)
+
+        assert "recorded_at" not in normalized
+
+    def test_normalize_lark_fields_handles_number_fields(self):
+        """测试数字字段的正确处理"""
+        row = {"val_loss": 1.234, "val_acc": 56.78, "epoch_time": 486}
+        field_types = {"val_loss": 2, "val_acc": 2, "epoch_time": 2}
+
+        normalized = normalize_lark_fields(row, field_types)
+
+        assert normalized["val_loss"] == 1.234
+        assert normalized["val_acc"] == 56.78
+        assert normalized["epoch_time"] == 486
+
+    def test_normalize_lark_fields_handles_invalid_numbers(self):
+        """测试无效数字值的处理"""
+        row = {"bad_val": None, "nan_val": float('nan'), "inf_val": float('inf')}
+        field_types = {"bad_val": 2, "nan_val": 2, "inf_val": 2}
+
+        normalized = normalize_lark_fields(row, field_types)
+
+        # None 转换为 0
+        assert normalized["bad_val"] == 0
+        # NaN 和 inf 应该保持原值
+        assert str(normalized["nan_val"]) == "nan"
+        assert normalized["inf_val"] == float('inf')
+
+    def test_init_merges_lark_config_with_env_defaults(self, monkeypatch, temp_base_dir):
+        env_defaults = {"app_id": "ENV_APP", "table_id": "ENV_TABLE"}
+
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: dict(env_defaults),
+        )
+
+        exp = Experiment(
+            name="test_exp",
+            command="python train.py",
+            base_dir=temp_base_dir,
+            lark_config={"view_id": "OVERRIDE_VIEW"},
+        )
+
+        expected = {
+            "app_id": "ENV_APP",
+            "table_id": "ENV_TABLE",
+            "view_id": "OVERRIDE_VIEW",
+        }
+        assert exp.lark_config == expected
+
+        metadata_file = exp.work_dir / "metadata.json"
+        with open(metadata_file, "r", encoding="utf-8") as fh:
+            metadata = json.load(fh)
+
+        assert metadata["lark_config"] == expected
+
+    def test_resume_merges_existing_and_env_lark_config(self, monkeypatch, temp_base_dir):
+        env_defaults = {"app_id": "ENV_APP"}
+
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.ensure_project_env_loaded",
+            lambda start=None: None,
+        )
+        monkeypatch.setattr(
+            "experiment_manager.core.experiment.get_lark_env_config",
+            lambda: dict(env_defaults),
+        )
+
+        existing_timestamp = "2023-01-01__12-00-00"
+        existing_dir = temp_base_dir / f"test_exp_{existing_timestamp}"
+        existing_dir.mkdir(parents=True)
+        (existing_dir / "terminal_logs").mkdir()
+        (existing_dir / "metrics").mkdir()
+
+        existing_metadata = {
+            "name": "test_exp",
+            "command": "python old_train.py",
+            "tags": ["old_tag"],
+            "timestamp": "2023-01-01T12:00:00+08:00",
+            "status": ExperimentStatus.FINISHED.value,
+            "pid": None,
+            "gpu_ids": [1, 2],
+            "current_run_id": "run_0003",
+            "cwd": "/old/work/dir",
+            "description": "Old description",
+            "lark_config": {"table_id": "EXISTING_TABLE"},
+        }
+
+        with open(existing_dir / "metadata.json", "w", encoding="utf-8") as fh:
+            json.dump(existing_metadata, fh)
+
+        exp = Experiment(
+            name="test_exp",
+            command="python new_train.py",
+            base_dir=temp_base_dir,
+            resume=existing_timestamp,
+            lark_config={"view_id": "OVERRIDE_VIEW"},
+        )
+
+        expected = {
+            "app_id": "ENV_APP",
+            "table_id": "EXISTING_TABLE",
+            "view_id": "OVERRIDE_VIEW",
+        }
+        assert exp.lark_config == expected
+
+        metadata_file = exp.work_dir / "metadata.json"
+        with open(metadata_file, "r", encoding="utf-8") as fh:
+            metadata = json.load(fh)
+
+        assert metadata["lark_config"] == expected

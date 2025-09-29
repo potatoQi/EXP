@@ -1,4 +1,0 @@
-timestamp,run_id,workload,step,elapsed,progress,message
-2025-09-28T14:37:37.468149,run_unknown,test,1,0.0,0.0,[test] step=1 progress=  0.0% elapsed=   0.0s remaining~  10.0s
-2025-09-28T14:37:42.468367,run_unknown,test,2,5.0,0.5001,[test] step=2 progress= 50.0% elapsed=   5.0s remaining~   5.0s
-2025-09-28T14:37:47.468603,run_unknown,test,3,10.0,1.0,[test] step=3 progress=100.0% elapsed=  10.0s remaining~   0.0s

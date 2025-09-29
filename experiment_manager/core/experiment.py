@@ -10,9 +10,19 @@ import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import pandas as pd
 from experiment_manager.core.status import ExperimentStatus
+from experiment_manager.integrations.lark.sync_utils import (
+    coerce_lark_config_input,
+    expand_lark_config,
+    resolve_lark_config,
+    sync_row_to_lark,
+)
+from experiment_manager.utils.env_utils import (
+    ensure_project_env_loaded,
+    get_lark_env_config,
+)
 from zoneinfo import ZoneInfo
 
 
@@ -31,6 +41,7 @@ class Experiment:
         cwd: Path = None,           # 命令执行的工作目录
         resume: Optional[str] = None,  # 指定时间戳继续在已有目录中运行
         description: Optional[str] = None,  # 对实验的自然语言描述
+        lark_config: Optional[Dict[str, str]] = None,  # 飞书多维表格（Bitable）配置 (dict or url str)
     ):
         self.name = name
         self.command = command
@@ -46,6 +57,12 @@ class Experiment:
         self.base_dir = Path(base_dir)
         self.current_run_id: Optional[str] = None
 
+        ensure_project_env_loaded() # 加载根目录下的 .env
+        env_lark_defaults = get_lark_env_config()   # 从 os.environ 中获取的飞书配置
+        provided_lark_config = coerce_lark_config_input(lark_config)    # 用户在 Experiment init 中提供的飞书配置
+
+        self.lark_config: Optional[Dict[str, str]] = None
+
         # 如果提供 resume，尝试加载已有实验目录
         if resume:
             resume_str = str(resume)
@@ -53,7 +70,7 @@ class Experiment:
             if not self.work_dir.exists():
                 raise ValueError(f"未找到可继续的实验目录: {self.work_dir}")
 
-            resume_exp = Experiment.load_from_dir(self.work_dir)
+            resume_exp = Experiment.load_from_dir(self.work_dir)    # 拿到 resume Experiment 实例
             self.timestamp = resume_exp.timestamp
             self.status = ExperimentStatus.PENDING
             self.pid = None
@@ -67,6 +84,13 @@ class Experiment:
                 self.gpu_ids = resume_exp.gpu_ids
             if tags is None:
                 self.tags = resume_exp.tags
+
+            existing_config = getattr(resume_exp, "lark_config", None) or {}    # 拿到 resume Experiment 的飞书配置
+            merged_config: Dict[str, str] = dict(env_lark_defaults) # .env 中的飞书配置
+            merged_config.update(existing_config)   # 把 resume 的飞书配置更新进去
+            merged_config.update(provided_lark_config)  # 用户在 Experiment init 中提供的飞书配置更新进去
+            expanded_config = expand_lark_config(merged_config) # 解析配置中的 url 并展开为 app_token, table_id, view_id
+            self.lark_config = expanded_config or None  # 得到最终飞书配置
         else:
             self.timestamp = datetime.now(LOCAL_TZ)         # 实验创建时间戳
             if self.timestamp.tzinfo is None:
@@ -74,6 +98,10 @@ class Experiment:
             self.status = ExperimentStatus.PENDING  # 实验状态
             timestamp_str = self.timestamp.strftime("%Y-%m-%d__%H-%M-%S")
             self.work_dir = self.base_dir / f"{self.name}_{timestamp_str}"
+            merged_config: Dict[str, str] = dict(env_lark_defaults) # .env 中的飞书配置
+            merged_config.update(provided_lark_config)  # 用户在 Experiment init 中提供的飞书配置更新进去
+            expanded_config = expand_lark_config(merged_config) # 解析配置中的 url 并展开为 app_token, table_id, view_id
+            self.lark_config = expanded_config or None  # 得到最终飞书配置
             self._init_directories()
 
         # 确保关键目录存在
@@ -150,6 +178,7 @@ class Experiment:
             "current_run_id": self.current_run_id,
             "cwd": str(self.cwd) if self.cwd else None,
             "description": self.description,
+            "lark_config": self.lark_config,
         }
         with open(self.work_dir / "metadata.json", "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
@@ -174,6 +203,9 @@ class Experiment:
             
         with open(metadata_file, "r", encoding="utf-8") as f:
             metadata = json.load(f)
+
+        ensure_project_env_loaded(work_dir)
+        env_lark_defaults = get_lark_env_config()   # 拿到 .env 中的飞书配置
         
         # 绕过 __init__ 创建实例
         exp = cls.__new__(cls)
@@ -190,7 +222,12 @@ class Experiment:
         cwd_value = metadata.get("cwd")
         exp.cwd = Path(cwd_value) if cwd_value else None
         exp.description = metadata.get("description")
-        
+        existing_lark = metadata.get("lark_config") or {}
+        merged_config: Dict[str, str] = dict(env_lark_defaults) # .env 中的飞书配置
+        merged_config.update(existing_lark) # 把 resume 的飞书配置更新进去
+        expanded_config = expand_lark_config(merged_config) # 解析配置中的 url 并展开为 app_token, table_id, view_id
+        exp.lark_config = expanded_config or None   # 得到最终飞书配置
+
         return exp
     
     # ============ 状态管理 ============
@@ -477,9 +514,17 @@ class Experiment:
         """
         return self.work_dir / "metrics" / f"{self.current_run_id}.csv"
 
-    def save_row(self):
+    def save_row(
+        self,
+        *,
+        lark: bool = False,
+        lark_config: Optional[Union[Dict[str, str], str]] = None,
+    ):
         """
-        保存当前行数据到CSV文件
+        保存当前行数据到 CSV 文件，并可选同步到飞书多维表格
+        Args:
+            lark: 是否同步到飞书多维表格
+            lark_config: 本次同步使用的飞书配置或者 url，若提供将与实例默认配置合并
         """
         if not hasattr(self, '_current_metrics_row') or not self._current_metrics_row:
             self.append_log("警告: 没有待保存的指标数据")
@@ -518,12 +563,42 @@ class Experiment:
                 writer.writerow(complete_row)
             
             # 写入新数据行
-            complete_row = {field: self._current_metrics_row.get(field, '') 
+            complete_row = {field: self._current_metrics_row.get(field, '')
                            for field in fieldnames}
             writer.writerow(complete_row)
+
+        row_snapshot = dict(complete_row)
         
         # 清空当前行数据，准备下一行
         self._current_metrics_row = {}
+
+        if not lark:
+            return
+
+        # 拿到最终版的飞书配置
+        resolved_config = resolve_lark_config(
+            lark_config,    # 本次调用提供的飞书配置
+            existing=self.lark_config,  # 实例的飞书配置
+            logger=self.append_log, # 日志记录函数
+        )
+        if not resolved_config:
+            return
+
+        # 如果配置发生了变化，持久化保存
+        if resolved_config != self.lark_config:
+            try:
+                self.lark_config = resolved_config
+                self._save_metadata()
+                self.append_log("飞书配置已更新并保存")
+            except Exception as exc:
+                self.append_log(f"警告: 无法持久化飞书配置: {exc}")
+
+        # 进行飞书同步
+        sync_row_to_lark(
+            row_snapshot,   # 一条记录
+            resolved_config,    # 飞书配置
+            logger=self.append_log  # 日志记录函数
+        )
     
     def load_metrics_df(self):
         """

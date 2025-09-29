@@ -13,6 +13,7 @@ dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.23.0",
     "websockets>=12.0",
+    "lark-oapi>=1.0.30",
 ]
 
 [tool.setuptools.packages.find]
@@ -29,6 +30,7 @@ exclude = [
 
 [project.scripts]
 EXP = "experiment_manager.ui.cli:main"
+EMP = "experiment_manager.utils.env_cli:main"
 
 [project.optional-dependencies]
 dev = [

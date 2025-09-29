@@ -153,7 +153,10 @@ def test_run_all_executes_until_complete(
         [
             {"name": "exp", "command": "echo run"},
         ],
-        scheduler_overrides={"max_concurrent_experiments": 1},
+        scheduler_overrides={
+            "max_concurrent_experiments": 1,
+            "linger_when_idle": False,
+        },
     )
     scheduler = ExperimentScheduler(config_path)
 
