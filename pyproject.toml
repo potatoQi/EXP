@@ -30,7 +30,6 @@ exclude = [
 
 [project.scripts]
 EXP = "experiment_manager.ui.cli:main"
-EMP = "experiment_manager.utils.env_cli:main"
 
 [project.optional-dependencies]
 dev = [

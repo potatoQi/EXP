@@ -32,7 +32,7 @@ pip install -e .
 
 ```bash
 # 交互式配置飞书环境变量
-EMP set_env --preset lark
+EXP set --preset lark
 ```
 
 ### 3. 单点实验运行
@@ -114,13 +114,13 @@ description = "高学习率实验"
 #### 运行调度器
 ```bash
 # 查看计划
-EMP run ./config.toml --dry-run
+EXP run ./config.toml --dry-run
 
 # 执行实验
-EMP run ./config.toml
+EXP run ./config.toml
 
 # 可视化监控（另开终端）
-EMP see ./experiments
+EXP see ./experiments
 ```
 
 ## License
