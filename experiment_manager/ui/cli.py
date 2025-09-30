@@ -2,70 +2,18 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import socket
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import List
 
 import uvicorn
 
 from experiment_manager.ui.server import create_app
 from experiment_manager.ui.service import SchedulerUISession
-from experiment_manager.utils.env_utils import (
-    load_project_env,
-    resolve_env_file,
-    update_project_env,
-)
 
 DEFAULT_PORT = 6066
-
-LARK_KEYS = [
-    "LARK_APP_ID",
-    "LARK_APP_SECRET",
-    "LARK_APP_TOKEN",
-    "LARK_TABLE_ID",
-    "LARK_VIEW_ID",
-]
-
-
-def _collect_updates(
-    requested_keys: Iterable[str],
-    current_env: Dict[str, str],
-    *,
-    secret: bool = False,
-    allow_remove: bool = False,
-    interactive: bool = True,
-) -> Dict[str, Optional[str]]:
-    updates: Dict[str, Optional[str]] = {}
-    requested = list(dict.fromkeys(requested_keys))  # preserve order, dedupe
-    key_iter: List[str] = requested.copy()
-
-    while key_iter or interactive:
-        if key_iter:
-            key = key_iter.pop(0)
-        else:
-            key = input("其余想加的变量名 (回车结束): ").strip()
-            if not key:
-                break
-        if allow_remove:
-            updates[key] = None
-            print(f"🗑️ 已标记删除 {key}")
-            continue
-        default = current_env.get(key, "")
-        prompt = f"{key} [{default}]: " if default else f"{key} (不填就回车): "
-        if secret or key.endswith("SECRET"):
-            value = getpass.getpass(prompt)
-        else:
-            value = input(prompt)
-        value = value.strip()
-        if not value:
-            print("⚠️ 未填写，跳过该变量。")
-            continue
-        updates[key] = value
-    return updates
-
 
 def build_ui_parser(parser: argparse.ArgumentParser) -> None:
     """为 see 子命令添加参数"""
@@ -96,27 +44,6 @@ def build_run_parser(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(func=handle_run_scheduler)
 
 
-def build_set_parser(parser: argparse.ArgumentParser) -> None:
-    """为 set 子命令添加参数"""
-    parser.add_argument("--key", help="指定单个变量名，未提供时进入交互模式")
-    parser.add_argument(
-        "--preset",
-        choices=["lark"],
-        help="使用预设变量集，目前支持 lark",
-    )
-    parser.add_argument(
-        "--secret",
-        action="store_true",
-        help="使用密文输入（适用于 SECRET 变量）",
-    )
-    parser.add_argument(
-        "--remove",
-        action="store_true",
-        help="将指定变量从 .env 中移除",
-    )
-    parser.set_defaults(func=handle_set_env)
-
-
 def build_parser() -> argparse.ArgumentParser:
     """构建主要的参数解析器"""
     parser = argparse.ArgumentParser(description="EXP 实验管理工具")
@@ -135,13 +62,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="启动可视化UI",
     )
     build_ui_parser(see_parser)
-    
-    # set 子命令 (之前的 set_env)
-    set_parser = subparsers.add_parser(
-        "set",
-        help="交互式设置环境变量并写入项目根目录的 .env",
-    )
-    build_set_parser(set_parser)
     
     return parser
 
@@ -169,41 +89,6 @@ def handle_run_scheduler(args: argparse.Namespace) -> None:
     print(f"🚀 启动调度器，配置文件: {config_path}")
     scheduler = ExperimentScheduler(config_path, dry_run=args.dry_run)
     scheduler.run_all()
-
-
-def handle_set_env(args: argparse.Namespace) -> None:
-    """处理环境变量设置"""
-    env_file = resolve_env_file()
-    current_env = load_project_env(apply=False)
-
-    print(f"📁 项目根目录: {env_file.project_root}")
-    print(f"🗂️ 环境文件: {env_file.env_path}")
-
-    if args.remove and not args.key and not args.preset:
-        args.preset = "lark"
-
-    preset_keys: List[str] = []
-    if args.preset == "lark":
-        preset_keys.extend(LARK_KEYS)
-        print("ℹ️ 正在配置飞书相关变量 (LARK_* )。")
-
-    if args.key:
-        preset_keys.insert(0, args.key)
-
-    updates = _collect_updates(
-        preset_keys,
-        current_env,
-        secret=args.secret,
-        allow_remove=args.remove,
-        interactive=args.key is None,
-    )
-
-    if not updates:
-        print("ℹ️ 未修改任何变量。")
-        return
-
-    update_project_env(updates)
-    print("✅ 已更新 .env 文件。")
 
 
 def handle_see_ui(args: argparse.Namespace) -> None:
@@ -249,4 +134,4 @@ def main(argv: List[str] | None = None) -> None:
     args.func(args)
 
 
-__all__ = ["run_ui", "main", "handle_run_scheduler", "handle_see_ui", "handle_set_env"]
+__all__ = ["run_ui", "main", "handle_run_scheduler", "handle_see_ui"]

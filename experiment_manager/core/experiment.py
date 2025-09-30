@@ -19,10 +19,6 @@ from experiment_manager.integrations.lark.sync_utils import (
     resolve_lark_config,
     sync_row_to_lark,
 )
-from experiment_manager.utils.env_utils import (
-    ensure_project_env_loaded,
-    get_lark_env_config,
-)
 from zoneinfo import ZoneInfo
 
 
@@ -57,8 +53,6 @@ class Experiment:
         self.base_dir = Path(base_dir)
         self.current_run_id: Optional[str] = None
 
-        ensure_project_env_loaded() # 加载根目录下的 .env
-        env_lark_defaults = get_lark_env_config()   # 从 os.environ 中获取的飞书配置
         provided_lark_config = coerce_lark_config_input(lark_config)    # 用户在 Experiment init 中提供的飞书配置
 
         self.lark_config: Optional[Dict[str, str]] = None
@@ -86,8 +80,7 @@ class Experiment:
                 self.tags = resume_exp.tags
 
             existing_config = getattr(resume_exp, "lark_config", None) or {}    # 拿到 resume Experiment 的飞书配置
-            merged_config: Dict[str, str] = dict(env_lark_defaults) # .env 中的飞书配置
-            merged_config.update(existing_config)   # 把 resume 的飞书配置更新进去
+            merged_config: Dict[str, str] = dict(existing_config)
             merged_config.update(provided_lark_config)  # 用户在 Experiment init 中提供的飞书配置更新进去
             expanded_config = expand_lark_config(merged_config) # 解析配置中的 url 并展开为 app_token, table_id, view_id
             self.lark_config = expanded_config or None  # 得到最终飞书配置
@@ -98,8 +91,7 @@ class Experiment:
             self.status = ExperimentStatus.PENDING  # 实验状态
             timestamp_str = self.timestamp.strftime("%Y-%m-%d__%H-%M-%S")
             self.work_dir = self.base_dir / f"{self.name}_{timestamp_str}"
-            merged_config: Dict[str, str] = dict(env_lark_defaults) # .env 中的飞书配置
-            merged_config.update(provided_lark_config)  # 用户在 Experiment init 中提供的飞书配置更新进去
+            merged_config: Dict[str, str] = dict(provided_lark_config)
             expanded_config = expand_lark_config(merged_config) # 解析配置中的 url 并展开为 app_token, table_id, view_id
             self.lark_config = expanded_config or None  # 得到最终飞书配置
             self._init_directories()
@@ -204,9 +196,6 @@ class Experiment:
         with open(metadata_file, "r", encoding="utf-8") as f:
             metadata = json.load(f)
 
-        ensure_project_env_loaded(work_dir)
-        env_lark_defaults = get_lark_env_config()   # 拿到 .env 中的飞书配置
-        
         # 绕过 __init__ 创建实例
         exp = cls.__new__(cls)
         exp.name = metadata["name"]
@@ -223,9 +212,7 @@ class Experiment:
         exp.cwd = Path(cwd_value) if cwd_value else None
         exp.description = metadata.get("description")
         existing_lark = metadata.get("lark_config") or {}
-        merged_config: Dict[str, str] = dict(env_lark_defaults) # .env 中的飞书配置
-        merged_config.update(existing_lark) # 把 resume 的飞书配置更新进去
-        expanded_config = expand_lark_config(merged_config) # 解析配置中的 url 并展开为 app_token, table_id, view_id
+        expanded_config = expand_lark_config(existing_lark) if existing_lark else None
         exp.lark_config = expanded_config or None   # 得到最终飞书配置
 
         return exp

@@ -298,18 +298,7 @@ class TestExperimentInit:
         assert offset is not None
         assert offset.total_seconds() == 8 * 3600
 
-    def test_init_parses_lark_url(self, monkeypatch, temp_base_dir):
-        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
-
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: dict(env_defaults),
-        )
-
+    def test_init_parses_lark_url(self, temp_base_dir):
         url = (
             "https://example.feishu.cn/base/MockAppToken123456789abcdef"
             "?table=tblMockTable123&view=vewMockView123"
@@ -319,12 +308,16 @@ class TestExperimentInit:
             name="test_exp",
             command="python train.py",
             base_dir=temp_base_dir,
-            lark_config={"url": url},
+            lark_config={
+                "url": url,
+                "app_id": "APP_ID",
+                "app_secret": "APP_SECRET",
+            },
         )
 
         expected = {
-            "app_id": "ENV_APP",
-            "app_secret": "ENV_SECRET",
+            "app_id": "APP_ID",
+            "app_secret": "APP_SECRET",
             "url": url,
             "app_token": "MockAppToken123456789abcdef",
             "table_id": "tblMockTable123",
@@ -339,29 +332,14 @@ class TestExperimentInit:
 
         assert metadata["lark_config"] == expected
 
-    def test_resolve_lark_config_updates_tokens_from_url(self, monkeypatch, temp_base_dir):
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"},
-        )
-        monkeypatch.setattr(
-            "experiment_manager.integrations.lark.sync_utils.ensure_project_env_loaded",
-            lambda: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.integrations.lark.sync_utils.get_lark_env_config",
-            lambda: {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"},
-        )
-
+    def test_resolve_lark_config_updates_tokens_from_url(self, temp_base_dir):
         exp = Experiment(
             name="test_exp",
             command="python train.py",
             base_dir=temp_base_dir,
             lark_config={
+                "app_id": "ENV_APP",
+                "app_secret": "ENV_SECRET",
                 "app_token": "app_old",
                 "table_id": "tbl_old",
                 "view_id": "vew_old",
@@ -401,23 +379,6 @@ class TestExperimentInit:
         assert metadata["lark_config"]["table_id"] == "tbl_old"
 
     def test_sync_row_to_lark_success_logs_record_ids(self, monkeypatch, temp_base_dir):
-        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
-
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: dict(env_defaults),
-        )
-
-        Experiment(
-            name="test_exp",
-            command="python train.py",
-            base_dir=temp_base_dir,
-        )
-
         logs = []
         monkeypatch.setattr(
             "experiment_manager.integrations.lark.sync_utils.list_field_names",
@@ -439,17 +400,6 @@ class TestExperimentInit:
         assert logs[-1] == "飞书同步成功，记录ID: rec123"
 
     def test_sync_row_to_lark_handles_sdk_errors(self, monkeypatch, temp_base_dir):
-        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
-
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: dict(env_defaults),
-        )
-
         logs = []
         monkeypatch.setattr(
             "experiment_manager.integrations.lark.sync_utils.list_field_names",
@@ -475,17 +425,6 @@ class TestExperimentInit:
         assert logs[-1].startswith("飞书同步失败: 错误信息")
 
     def test_sync_row_to_lark_skips_when_field_missing(self, monkeypatch, temp_base_dir):
-        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
-
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: dict(env_defaults),
-        )
-
         logs: List[str] = []
         monkeypatch.setattr(
             "experiment_manager.integrations.lark.sync_utils.list_field_names",
@@ -515,23 +454,6 @@ class TestExperimentInit:
         assert spy_called["value"] is False
 
     def test_sync_row_to_lark_converts_datetime_to_timestamp(self, monkeypatch, temp_base_dir):
-        env_defaults = {"app_id": "ENV_APP", "app_secret": "ENV_SECRET"}
-
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: dict(env_defaults),
-        )
-
-        exp = Experiment(
-            name="test_exp",
-            command="python train.py",
-            base_dir=temp_base_dir,
-        )
-
         captured: Dict[str, Any] = {}
         monkeypatch.setattr(
             "experiment_manager.integrations.lark.sync_utils.list_field_names",
@@ -603,18 +525,7 @@ class TestExperimentInit:
         assert str(normalized["nan_val"]) == "nan"
         assert normalized["inf_val"] == float('inf')
 
-    def test_init_merges_lark_config_with_env_defaults(self, monkeypatch, temp_base_dir):
-        env_defaults = {"app_id": "ENV_APP", "table_id": "ENV_TABLE"}
-
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: dict(env_defaults),
-        )
-
+    def test_init_preserves_provided_lark_config(self, temp_base_dir):
         exp = Experiment(
             name="test_exp",
             command="python train.py",
@@ -622,11 +533,7 @@ class TestExperimentInit:
             lark_config={"view_id": "OVERRIDE_VIEW"},
         )
 
-        expected = {
-            "app_id": "ENV_APP",
-            "table_id": "ENV_TABLE",
-            "view_id": "OVERRIDE_VIEW",
-        }
+        expected = {"view_id": "OVERRIDE_VIEW"}
         assert exp.lark_config == expected
 
         metadata_file = exp.work_dir / "metadata.json"
@@ -635,18 +542,7 @@ class TestExperimentInit:
 
         assert metadata["lark_config"] == expected
 
-    def test_resume_merges_existing_and_env_lark_config(self, monkeypatch, temp_base_dir):
-        env_defaults = {"app_id": "ENV_APP"}
-
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.ensure_project_env_loaded",
-            lambda start=None: None,
-        )
-        monkeypatch.setattr(
-            "experiment_manager.core.experiment.get_lark_env_config",
-            lambda: dict(env_defaults),
-        )
-
+    def test_resume_merges_existing_and_provided_lark_config(self, temp_base_dir):
         existing_timestamp = "2023-01-01__12-00-00"
         existing_dir = temp_base_dir / f"test_exp_{existing_timestamp}"
         existing_dir.mkdir(parents=True)
@@ -679,7 +575,6 @@ class TestExperimentInit:
         )
 
         expected = {
-            "app_id": "ENV_APP",
             "table_id": "EXISTING_TABLE",
             "view_id": "OVERRIDE_VIEW",
         }

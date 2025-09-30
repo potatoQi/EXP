@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from datetime import datetime
 from typing import Any, Callable, Dict, Mapping, Optional, Union
 from zoneinfo import ZoneInfo
+from urllib.parse import parse_qs, urlparse
 
 from experiment_manager.integrations.lark.bitable import (
     LarkBitableClient,
@@ -16,11 +18,6 @@ from experiment_manager.integrations.lark.bitable import (
     list_field_names,
     sync_record,
     upload_file_to_lark,
-)
-from experiment_manager.utils.env_utils import (
-    ensure_project_env_loaded,
-    get_lark_env_config,
-    parse_bitable_url,
 )
 
 LOCAL_TZ = ZoneInfo("Asia/Shanghai")
@@ -59,6 +56,83 @@ def expand_lark_config(config: Optional[Dict[str, str]]) -> Optional[Dict[str, s
             if value:
                 expanded[field] = value
     return expanded
+
+
+_APP_TOKEN_RE = re.compile(r"app[0-9A-Za-z]{5,}")
+_TABLE_TOKEN_RE = re.compile(r"tbl[0-9A-Za-z]{5,}")
+_VIEW_TOKEN_RE = re.compile(r"vew[0-9A-Za-z]{5,}")
+_URL_QUERY_KEYS = {
+    "table_id": ("table", "tableId", "table_id"),
+    "view_id": ("view", "viewId", "view_id"),
+}
+
+
+def parse_bitable_url(url: str) -> Dict[str, str]:
+    """Extract ``app_token``/``table_id``/``view_id`` from a Feishu Bitable URL."""
+
+    if not url:
+        return {}
+
+    parsed = urlparse(url)
+    tokens: Dict[str, str] = {}
+
+    path_segments = [segment for segment in parsed.path.split("/") if segment]
+    for segment in path_segments:
+        if _APP_TOKEN_RE.fullmatch(segment):
+            tokens["app_token"] = segment
+            break
+
+    if "app_token" not in tokens:
+        for idx, segment in enumerate(path_segments[:-1]):
+            if segment.lower() in {"base", "bitable"}:
+                candidate = path_segments[idx + 1]
+                if candidate:
+                    tokens["app_token"] = candidate
+                break
+
+    def _consume_query(query: str) -> None:
+        if not query:
+            return
+        qs = parse_qs(query, keep_blank_values=True)
+        for key, aliases in _URL_QUERY_KEYS.items():
+            for alias in aliases:
+                values = qs.get(alias)
+                if values:
+                    value = values[0]
+                    if value:
+                        tokens.setdefault(key, value)
+                        break
+
+    _consume_query(parsed.query)
+
+    if "=" in parsed.fragment:
+        _consume_query(parsed.fragment)
+
+    if "app_token" not in tokens:
+        for segment in path_segments:
+            match = _APP_TOKEN_RE.search(segment)
+            if match:
+                tokens["app_token"] = match.group(0)
+                break
+        else:
+            match = _APP_TOKEN_RE.search(parsed.fragment)
+            if match:
+                tokens["app_token"] = match.group(0)
+
+    for token_key, pattern in (("table_id", _TABLE_TOKEN_RE), ("view_id", _VIEW_TOKEN_RE)):
+        if token_key in tokens:
+            continue
+        for segment in path_segments:
+            match = pattern.search(segment)
+            if match:
+                tokens[token_key] = match.group(0)
+                break
+        else:
+            match = pattern.search(parsed.fragment)
+            if match:
+                tokens[token_key] = match.group(0)
+
+    return tokens
 
 
 # 将原始记录 row 转换为适配飞书字段 field_types 格式的数据并返回
@@ -255,11 +329,7 @@ def resolve_lark_config(
     Returns:
         解析和验证后的飞书配置，如果配置不完整则返回 None
     """
-    ensure_project_env_loaded()
     base_config: Dict[str, str] = {}
-    env_defaults = get_lark_env_config()
-    if env_defaults:
-        base_config.update(env_defaults)
     if existing:
         base_config.update(existing)
     overrides_config = coerce_lark_config_input(overrides)

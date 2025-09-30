@@ -31,7 +31,6 @@
 
 ```bash
 pip install -e .              # 安装本项目
-EXP set --preset lark         # 可选：配置飞书环境变量
 ```
 
 ### 🎯 快速体验
@@ -108,7 +107,24 @@ exp.run(background=False) # True 时后台运行
 | `exp.run(background=False, extra_env=None)` | 启动训练命令，可选择后台运行并注入额外环境变量。 |
 | `exp.upd_row(**metrics)` | 更新当前指标行（如 `epoch`、`train_loss` 等）。 |
 | `exp.save_row(lark=False, lark_config=None)` | 将指标写入 CSV，并可选同步飞书多维表。 |
-| `load_experiment()` | 在训练脚本中获取当前实验实例，未在 EXP 环境下则提示没有环境变量。 |
+| `load_experiment()` | 在训练脚本中获取当前实验实例，若未通过 EXP 启动则会提示未找到运行上下文。 |
+
+## 📈 进阶：飞书配置最佳实践
+
+### 单点实验
+- 在创建 `Experiment(...)` 时直接通过 `lark_config` 提供飞书凭据，可传字典或 URL 字符串。
+- 建议在字典中显式包含 `app_id`、`app_secret`、`app_token`、`table_id`（视图可选 `view_id`）。若传入 URL，框架会自动解析 `app_token`/`table_id`/`view_id`。
+- 实例在首次同步成功后会将最终配置写入 `metadata.json`，`resume` 或后续 `save_row(lark=True)` 会复用这份配置。
+
+### 调度器
+- 在 `[scheduler]` 段落设置共享凭据，例如 `lark_config = { app_id = "cli_xxx", app_secret = "xxx" }`，避免每个实验重复填写。
+- 每个 `[[experiments]]` 可通过 `lark_url` 或 `lark_config` 覆盖/补充表格信息，字段会覆盖调度器级别的同名项。
+- 若某实验需要独立账号，只需在该实验的 `lark_config` 中补齐完整凭据即可。
+
+### 合并逻辑速览
+- 调度模式下：`[scheduler].lark_config` < `[[experiments]].lark_config`/`lark_url`。
+- 单点实验：构造函数的 `lark_config` 与实例已有配置（如 `resume` 读取的 `metadata.json`）合并，新传入值优先。
+- `exp.save_row(lark=True, lark_config=...)` 会在实例默认配置之上再次叠加本次调用的覆盖值。
 
 ## License
 
