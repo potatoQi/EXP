@@ -10,6 +10,62 @@
   --warning: #facc15;
   --error: #f87171;
   --font: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  
+  /* Theme-aware additional colors */
+  --bg-toolbar: rgba(15, 23, 42, 0.95);
+  --border-subtle: rgba(148, 163, 184, 0.1);
+  --border-muted: rgba(148, 163, 184, 0.07);
+  --border-strong: #1f2937;
+  --bg-overlay: rgba(15, 23, 42, 0.6);
+  --bg-code: rgba(30, 41, 59, 0.8);
+  --bg-info: rgba(15, 23, 42, 0.4);
+  --bg-metadata: rgba(15, 23, 42, 0.7);
+  --accent-bg: rgba(56, 189, 248, 0.12);
+  --accent-border: rgba(56, 189, 248, 0.35);
+  --success-border: rgba(34, 197, 94, 0.5);
+  --warning-border: rgba(250, 204, 21, 0.5);
+  --error-border: rgba(248, 113, 113, 0.5);
+  --shadow-color: rgba(148, 163, 184, 0.6);
+  --success-shadow: rgba(34, 197, 94, 0.8);
+  --warning-shadow: rgba(250, 204, 21, 0.8);
+  --error-shadow: rgba(248, 113, 113, 0.8);
+  --button-hover: #475569;
+  --export-hover: #16a34a;
+}
+
+/* Light theme variables */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-panel: #f8fafc;
+  --bg-highlight: #e2e8f0;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --accent: #0ea5e9;
+  --success: #059669;
+  --warning: #d97706;
+  --error: #dc2626;
+  
+  /* Light theme additional colors */
+  --bg-toolbar: rgba(248, 250, 252, 0.95);
+  --border-subtle: rgba(100, 116, 139, 0.15);
+  --border-muted: rgba(100, 116, 139, 0.1);
+  --border-strong: #e2e8f0;
+  --bg-overlay: rgba(248, 250, 252, 0.85);
+  --bg-code: rgba(241, 245, 249, 0.9);
+  --bg-info: rgba(248, 250, 252, 0.6);
+  --bg-metadata: rgba(241, 245, 249, 0.95);
+  --accent-bg: rgba(14, 165, 233, 0.08);
+  --accent-border: rgba(14, 165, 233, 0.25);
+  --success-border: rgba(5, 150, 105, 0.3);
+  --warning-border: rgba(217, 119, 6, 0.3);
+  --error-border: rgba(220, 38, 38, 0.3);
+  --shadow-color: rgba(100, 116, 139, 0.3);
+  --success-shadow: rgba(5, 150, 105, 0.4);
+  --warning-shadow: rgba(217, 119, 6, 0.4);
+  --error-shadow: rgba(220, 38, 38, 0.4);
+  --button-hover: #f1f5f9;
+  --export-hover: #10b981;
 }
 
 * {
@@ -29,12 +85,12 @@ body {
 
 .app-toolbar {
   padding: 12px 20px;
-  background: rgba(15, 23, 42, 0.95);
+  background: var(--bg-toolbar);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid var(--border-strong);
   gap: 16px;
 }
 
@@ -71,8 +127,8 @@ body {
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--accent-border);
+  background: var(--bg-overlay);
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-secondary);
@@ -174,7 +230,7 @@ button {
 }
 
 button:hover {
-  background: #475569;
+  background: var(--button-hover);
 }
 
 button.active {
@@ -199,12 +255,12 @@ button.active {
 
 .app-footer {
   padding: 10px 20px;
-  background: rgba(15, 23, 42, 0.95);
+  background: var(--bg-toolbar);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid #1f2937;
+  border-top: 1px solid var(--border-strong);
   font-size: 0.78rem;
   color: var(--text-secondary);
 }
@@ -247,7 +303,7 @@ button.active {
   background: var(--bg-panel);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -257,7 +313,7 @@ button.active {
 .status-panel h2 {
   margin: 0;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 0.92rem;
 }
 
@@ -278,7 +334,7 @@ button.active {
 
 .task-item {
   padding: 8px 14px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.07);
+  border-bottom: 1px solid var(--border-muted);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -298,7 +354,7 @@ button.active {
 
 .task-item:hover,
 .task-item.active {
-  background: rgba(56, 189, 248, 0.12);
+  background: var(--accent-bg);
 }
 
 .task-header {
@@ -450,7 +506,7 @@ button.active {
   overflow-y: auto;
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 0.75rem;
-  background: rgba(15, 23, 42, 0.6);
+  background: var(--bg-overlay);
 }
 
 .info-view {
@@ -467,8 +523,8 @@ button.active {
 }
 
 .info-section {
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: var(--bg-info);
+  border: 1px solid var(--border-muted);
   border-radius: 10px;
   padding: 10px 12px;
 }
@@ -483,7 +539,7 @@ button.active {
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(15, 23, 42, 0.7);
+  background: var(--bg-metadata);
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 0.72rem;
   color: var(--text-secondary);
@@ -521,7 +577,7 @@ button.active {
 
 .info-list code {
   padding: 2px 6px;
-  background: rgba(30, 41, 59, 0.8);
+  background: var(--bg-code);
   border-radius: 6px;
   color: var(--accent);
   font-size: 0.72rem;
@@ -694,7 +750,7 @@ button.active {
 }
 
 .query-btn:hover {
-  background: #0ea5e9;
+  background: var(--accent);
 }
 
 .clear-btn {
@@ -703,7 +759,7 @@ button.active {
 }
 
 .clear-btn:hover {
-  background: #475569;
+  background: var(--button-hover);
 }
 
 .query-results {
@@ -917,7 +973,7 @@ button.active {
 }
 
 .export-btn:hover {
-  background: #16a34a;
+  background: var(--export-hover);
 }
 
 .export-btn:disabled {
