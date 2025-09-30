@@ -674,3 +674,27 @@ class Experiment:
             "pid": self.pid,
             "gpu_ids": self.gpu_ids,
         }
+
+
+def load_experiment() -> Experiment:
+    """
+    便捷函数：从环境变量加载当前实验实例
+    用于在训练脚本中获取由 EXP 框架管理的实验实例。
+    该函数会从环境变量中读取实验的工作目录，然后加载实验元数据。
+    Returns:
+        Experiment: 当前实验实例
+    Raises:
+        RuntimeError: 如果不在 EXP 管理的环境中运行
+        FileNotFoundError: 如果实验元数据文件不存在
+    """
+    work_dir_env = os.environ.get("EXPERIMENT_WORK_DIR")
+    if not work_dir_env:
+        raise RuntimeError(
+            "未找到 EXPERIMENT_WORK_DIR 环境变量。"
+            "此函数只能在 EXP 框架管理的实验中使用。"
+            "请确保通过 Experiment.run() 启动您的训练脚本。"
+        )
+    work_dir = Path(work_dir_env)
+    if not work_dir.exists():
+        raise FileNotFoundError(f"实验工作目录不存在: {work_dir}")
+    return Experiment.load_from_dir(work_dir)

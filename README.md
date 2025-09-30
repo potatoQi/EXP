@@ -17,111 +17,98 @@
   <p><em>实验查询页面 - 实验查询与内容预览</em></p>
 </div>
 
-## 🚀 快速上手
 
-### 1. 安装
+## 如何嵌入到你的工程
+
+只需完成两件事：
+
+1. **写包装脚本**——用 `Experiment` 包装你的训练命令，EXP 会负责目录、日志和状态。
+2. **写指标**——在训练脚本中调用 `load_experiment()`，然后即可使用 EXP 提供的 api。
+
+搞定这两步，就可以单点运行，也能批量调度。
+
+### 使用前准备
 
 ```bash
-pip install -e .
+pip install -e .              # 安装本项目
+EXP set --preset lark         # 可选：配置飞书环境变量
 ```
 
-### 2. 配置变量
+### 🎯 快速体验
 
-#### 环境变量配置（可选）
-创建 `.env` 文件管理环境变量：
+### 方式一：单点运行
 
-```bash
-# 交互式配置飞书环境变量
-EXP set --preset lark
-```
+**1. 创建一个 toy example**
 
-### 3. 单点实验运行
-
-#### 最简示例
 ```python
+# 创建一个 toy 训练脚本 train.py
+import time
+from experiment_manager.core import load_experiment
+
+exp = load_experiment()
+
+for i in range(3):
+    exp.upd_row(step=i, loss=1.0/(i+1))
+    exp.save_row()
+    print(f"Step {i}, Loss: {1.0/(i+1):.3f}")
+    time.sleep(1)
+
+# 创建包装脚本 run_exp.py
 from pathlib import Path
 from experiment_manager.core import Experiment
 
-# 创建实验
 exp = Experiment(
-    name="my_experiment",
-    command="python train.py --epochs 10",
-    base_dir=Path("./experiments")
+  name="test",
+  command="python train.py",
+  base_dir=Path("./results"),
+  cwd=Path(".")
 )
-
-# 记录指标
-exp.upd_row(epoch=1, train_loss=0.5, val_acc=0.85)
-exp.save_row()  # 保存到 CSV
-# exp.save_row(lark=True) 可同步到飞书
+exp.run(background=False) # True 时后台运行
 ```
 
-#### 完整示例
-```python
-exp = Experiment(
-    name="cnn_baseline",
-    command="python train.py --epochs 100 --lr 0.001",
-    base_dir=Path("./experiments"),    # 实验输出目录
-    gpu_ids=[0, 1],                    # 指定GPU
-    tags=["baseline", "cnn"],          # 标签
-    cwd="./",                          # 工作目录
-    description="基线CNN实验",          # 描述
-    lark_config="https://example.feishu.cn/base/xxx?table=tblxxx"  # 飞书配置
-)
+**2. 运行并查看结果**
 
-# 训练循环
-for epoch in range(10):
-    # ... 训练代码 ...
-    
-    exp.upd_row(
-        epoch=epoch,
-        train_loss=train_loss,
-        val_acc=val_acc,
-        lr=current_lr
-    )
-    exp.save_row(lark=True)
+  ```bash
+  python run_exp.py
+  ```
 
-# 分析结果
-df = exp.load_metrics_df()
-best_acc = df['val_acc'].max()
-```
+  输出会在 `<base_dir>/<name>_<timestamp>/`
 
-### 4. 批量调度器运行
+### 方式二：配置驱动批量调度
 
-#### 创建配置文件
-创建 `config.toml`：
+1. **写一个最小配置**
 
-```toml
-# 配置文件的完整写法参考 docs/example_config.toml
+  ```toml
+  # config.toml
+  [scheduler]
+  base_experiment_dir = "./results"
+  max_concurrent_experiments = 2
 
-[scheduler]
-max_concurrent_experiments = 2
-base_experiment_dir = "./experiments"
-linger_when_idle = true
+  [[experiments]]
+  name = "exp1"
+  command = "python train.py"
 
-[[experiments]]
-name = "baseline"
-command = "python train.py --epochs 10 --lr 0.001"
-priority = 10
-description = "基线实验"
+  [[experiments]]
+  name = "exp2"
+  command = "python train.py"
+  ```
 
-[[experiments]]
-name = "high_lr"
-command = "python train.py --epochs 10 --lr 0.01"
-priority = 5
-description = "高学习率实验"
-```
+2. **启动调度器并打开 UI**
 
-#### 运行调度器
-```bash
-# 查看计划
-EXP run ./config.toml --dry-run
+  ```bash
+  EXP run config.toml               # 执行配置中所有实验
+  EXP see ./results                 # 可视化监控界面
+  ```
 
-# 执行实验
-EXP run ./config.toml
+## 🧰 Experiment API 速览
 
-# 可视化监控（另开终端）
-EXP see ./experiments
-```
+| API | 说明 |
+| --- | --- |
+| `Experiment(...)` | 创建实验实例，常用参数：`name`、`command`、`base_dir`、`gpu_ids`、`tags`、`description`。 |
+| `exp.run(background=False, extra_env=None)` | 启动训练命令，可选择后台运行并注入额外环境变量。 |
+| `exp.upd_row(**metrics)` | 更新当前指标行（如 `epoch`、`train_loss` 等）。 |
+| `exp.save_row(lark=False, lark_config=None)` | 将指标写入 CSV，并可选同步飞书多维表。 |
+| `load_experiment()` | 在训练脚本中获取当前实验实例，未在 EXP 环境下则提示没有环境变量。 |
 
 ## License
 
