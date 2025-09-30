@@ -8,12 +8,12 @@
 📱 **飞书同步** - 训练指标实时同步到多维表格，团队协作更便捷
 
 <div align="center">
-  <img src="docs/images/1.png" alt="实验管理界面" width="80%">
+  <img src="https://raw.githubusercontent.com/potatoQi/EXP/main/docs/images/1.png" alt="实验管理界面" width="80%">
   <p><em>实验管理界面 - 批量调度与实时监控</em></p>
 </div>
 
 <div align="center">
-  <img src="docs/images/2.png" alt="实验详情页面" width="80%">
+  <img src="https://raw.githubusercontent.com/potatoQi/EXP/main/docs/images/2.png" alt="实验详情页面" width="80%">
   <p><em>实验查询页面 - 实验查询与内容预览</em></p>
 </div>
 
@@ -30,7 +30,7 @@
 ### 使用前准备
 
 ```bash
-pip install -e .              # 安装本项目
+pip install -e . 或者 pip install xpriment
 ```
 
 ### 🎯 快速体验
@@ -103,11 +103,53 @@ exp.run(background=False) # True 时后台运行
 
 | API | 说明 |
 | --- | --- |
-| `Experiment(...)` | 创建实验实例，常用参数：`name`、`command`、`base_dir`、`gpu_ids`、`tags`、`description`。 |
-| `exp.run(background=False, extra_env=None)` | 启动训练命令，可选择后台运行并注入额外环境变量。 |
-| `exp.upd_row(**metrics)` | 更新当前指标行（如 `epoch`、`train_loss` 等）。 |
-| `exp.save_row(lark=False, lark_config=None)` | 将指标写入 CSV，并可选同步飞书多维表。 |
-| `load_experiment()` | 在训练脚本中获取当前实验实例，若未通过 EXP 启动则会提示未找到运行上下文。 |
+| `Experiment(...)` | 核心入口。常用参数：`name`（实验名）、`command`（实际训练命令）、`base_dir`（输出根目录）、`cwd`、`tags`、`gpu_ids`、`description`。若需要飞书同步，使用 `lark_config` 传入凭据或 URL，实例会在创建时生成工作目录并写入 `metadata.json`。 |
+| `load_experiment()` | 训练脚本内获取当前运行的 `Experiment` 实例。该函数依赖调度器或包装脚本注入的目录信息；如果直接裸跑脚本，会抛出说明性异常，提示未在 EXP 环境下启动。 |
+| `exp.run(background=False, extra_env=None)` | 启动训练命令并记录日志。`background=True` 时异步执行且自动创建输出线程；`extra_env` 可传字典为子进程增删环境变量。方法会维护运行状态并把 PID、日志路径等写入 `metadata.json`。 |
+| `exp.upd_row(**metrics)` | 累积一行指标数据到缓冲区（字典），常用于每个 step/epoch 结束后调用。支持任意键值对，默认将值转为字符串或数值，下一次 `save_row()` 会将本次更新写入 CSV。 |
+| `exp.save_row(lark=False, lark_config=None)` | 将缓冲区写入 `<work_dir>/metrics/*.csv`，必要时扩展字段并回填旧数据。`lark=True` 时会尝试同步飞书：默认使用实例创建时的 `lark_config`，也可以通过参数传入临时覆盖并在成功后持久化。 |
+
+### 参数详解
+
+#### `Experiment(...)`
+
+| 参数 | 类型 | 说明 | 示例 |
+| --- | --- | --- | --- |
+| `name` | `str` | 实验名称，最终目录名为 `name_timestamp`。 | `"cnn_small"` |
+| `command` | `str` | 实际执行的训练指令，会在 `run()` 时通过 shell 启动。 | `"python train.py --epochs 20"` |
+| `base_dir` | `PathLike` | 实验输出根目录，必须存在或可创建。 | `Path("./experiments")` |
+| `tags` | `List[str]` | 可选标签，写入 `metadata.json` 方便筛选。默认 `[]`。 | `["cnn", "baseline"]` |
+| `gpu_ids` | `List[int]` | 指定 GPU 序号，会自动设置 `CUDA_VISIBLE_DEVICES`。 | `[0, 1]` |
+| `cwd` | `PathLike` | 运行子进程时的工作目录，未提供则使用新建的实验目录。 | `Path("./training")` |
+| `resume` | `str` | 继续已有实验，值为原目录时间戳（如 `2025-09-30__11-02-13`）。 | `"2025-09-30__11-02-13"` |
+| `description` | `str` | 备注信息，会写入 `metadata.json` 并在 UI 中展示。 | `"Sweep with cosine LR"` |
+| `lark_config` | `Dict[str,str] \| str` | 飞书配置，支持直接传 URL (`str`) 或包含 `app_id`、`app_secret`、`app_token`、`table_id` 等键的字典。解析后会持久化，用于后续同步。 | `{"app_id": "cli_xxx", "app_secret": "xxx", "url": "https://example.feishu.cn/base/app123?table=tbl123"}` |
+
+#### `load_experiment()`
+
+无入参。从训练脚本中返回当前 `Experiment` 实例，若脚本未通过 EXP 启动则抛出异常。
+
+#### `exp.run(background=False, extra_env=None)`
+
+| 参数 | 类型 | 说明 | 示例 |
+| --- | --- | --- | --- |
+| `background` | `bool` | `True` 为后台执行并开启日志收集线程；`False` 时阻塞等待命令结束。默认 `True`。 | `background=False` |
+| `extra_env` | `Dict[str, str]` | 额外注入/覆盖的环境变量；值为 `None` 的键会被删除。 | `{"WANDB_MODE": "offline"}` |
+
+#### `exp.upd_row(**metrics)`
+
+可变关键字参数：任意指标键值对，合并到内部缓冲区，直到下一次 save_row 时才写回。常见示例：
+
+```python
+exp.upd_row(epoch=i, train_loss=loss, lr=scheduler.get_last_lr()[0])
+```
+
+#### `exp.save_row(lark=False, lark_config=None)`
+
+| 参数 | 类型 | 说明 | 示例 |
+| --- | --- | --- | --- |
+| `lark` | `bool` | 是否触发飞书同步。默认 `False`。 | `lark=True` |
+| `lark_config` | `Dict[str,str] \| str` | 本次写入的飞书覆盖配置。若提供，将与实例已有配置合并（覆盖优先），并在成功后写入 `metadata.json`。 | `{"view_id": "vewABCDEFG"}` |
 
 ## 📈 进阶：飞书配置最佳实践
 
@@ -128,7 +170,7 @@ exp.run(background=False) # True 时后台运行
 
 ## License
 
-This repository is licensed under the [Apache-2.0 License](LICENSE).
+This repository is licensed under the [Apache-2.0 License](https://github.com/potatoQi/EXP/blob/main/LICENSE).
 
 ## Star History
 
