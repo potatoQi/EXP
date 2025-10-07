@@ -1,0 +1,36 @@
+# 工作流的名称,会显示在 GitHub Actions 页面上
+name: 🧪 Tests
+
+# 定义触发此工作流的事件
+on:
+  push:  # 当代码被推送时触发
+    branches: [ main, dev ]  # 仅限 main 和 dev 分支
+  pull_request:  # 当创建或更新 Pull Request 时触发
+    branches: [ main ]  # 仅限目标分支为 main 的 PR
+
+# 定义工作流中的所有任务(jobs)
+jobs:
+  test:  # 任务 ID,可以自定义名称
+    runs-on: ubuntu-latest  # 指定运行环境为最新版 Ubuntu 系统
+
+    strategy:  # 定义矩阵策略,用于在多个配置下运行任务
+      matrix:  # 矩阵配置
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']  # 定义多个 Python 版本,工作流会为每个版本运行一次
+
+    steps:  # 定义任务中的具体执行步骤
+    - name: 📥 检出代码  # 步骤的描述名称
+      uses: actions/checkout@v4  # 使用官方 checkout action 从仓库拉取代码,v4 是版本号
+
+    - name: 🐍 设置 Python ${{ matrix.python-version }}  # ${{ }} 是模板语法,引用 matrix 中定义的 Python 版本
+      uses: actions/setup-python@v4  # 使用官方 setup-python action 安装 Python
+      with:  # 传递参数给这个 action
+        python-version: ${{ matrix.python-version }}  # 指定要安装的 Python 版本
+
+    - name: 📦 安装依赖  # 安装项目所需的 Python 包
+      run: |  # run 关键字后面跟 shell 命令,| 表示多行命令
+        python -m pip install --upgrade pip  # 先升级 pip 到最新版本
+        pip install -e .[dev]  # 以可编辑模式安装当前项目及其 dev 依赖
+
+    - name: 🧪 运行测试  # 执行测试用例
+      run: |  # 运行 pytest 测试框架
+        pytest -v --tb=short  # -v 详细输出,--tb=short 简短的错误回溯信息

@@ -1,0 +1,77 @@
+# 工作流名称,用于发布 Python 包到 PyPI
+name: 🚀 Release to PyPI
+
+# 定义触发此工作流的事件
+on:
+  push:  # 当推送操作发生时
+    tags:  # 且推送的是标签(tag)时触发
+      - 'v*'  # 只匹配 v 开头的标签,如 v0.0.1, v1.2.3 等
+
+  workflow_dispatch:  # 允许在 GitHub 网页上手动触发此工作流
+    inputs:  # 手动触发时需要的输入参数
+      version:  # 参数名称
+        description: '版本标签 (必须以 v 开头,如 v0.0.3)'  # 参数描述,显示在手动触发界面
+        required: true  # 此参数为必填项
+        type: string  # 参数类型为字符串
+
+# 定义工作流中的所有任务
+jobs:
+  release:  # 任务 ID
+    runs-on: ubuntu-latest  # 指定运行环境为最新版 Ubuntu 系统
+    
+    steps:  # 定义任务中的具体执行步骤
+    - name: 📥 检出代码  # 步骤名称
+      uses: actions/checkout@v4  # 使用官方 checkout action 拉取仓库代码
+    
+    - name: 🐍 设置 Python  # 安装 Python 环境
+      uses: actions/setup-python@v4  # 使用官方 Python 安装 action
+      with:  # 传递参数
+        python-version: '3.11'  # 指定使用 Python 3.11 版本
+    
+    - name: 📦 安装依赖  # 安装打包和发布所需的工具
+      run: |  # 运行多行 shell 命令
+        python -m pip install --upgrade pip  # 升级 pip 到最新版本
+        pip install build twine  # build: 构建工具; twine: PyPI 上传工具
+    
+    - name: 🔧 更新版本号 (手动触发时)  # 当手动触发时自动更新 pyproject.toml 中的版本号
+      if: github.event_name == 'workflow_dispatch'  # 条件判断:仅当手动触发时执行
+      run: |  # 运行多行命令
+        VERSION="${{ github.event.inputs.version }}"  # 获取手动输入的版本标签(如 v0.0.3)
+        VERSION_NUMBER="${VERSION#v}"  # 去掉开头的 v,得到纯数字版本号(如 0.0.3)
+        sed -i "s/version = \"[^\"]*\"/version = \"$VERSION_NUMBER\"/" pyproject.toml  # 使用 sed 命令替换 pyproject.toml 中的版本号
+        echo "已更新版本为: $VERSION_NUMBER (标签: $VERSION)"  # 输出提示信息
+    
+    - name: 🏷️ 创建并推送标签 (手动触发时)  # 手动触发时创建 git 标签
+      if: github.event_name == 'workflow_dispatch'  # 条件判断:仅当手动触发时执行
+      run: |  # 运行多行命令
+        git config user.name "github-actions[bot]"  # 配置 git 用户名
+        git config user.email "github-actions[bot]@users.noreply.github.com"  # 配置 git 邮箱
+        git add pyproject.toml  # 暂存修改的文件
+        git commit -m "chore: bump version to ${{ github.event.inputs.version }}"  # 提交版本更新
+        git tag ${{ github.event.inputs.version }}  # 创建标签
+        git push origin main  # 推送提交到 main 分支
+        git push origin ${{ github.event.inputs.version }}  # 推送标签
+    
+    - name: 🧹 清理构建产物  # 清理之前可能存在的构建文件,确保干净的构建环境
+      run: rm -rf dist build *.egg-info  # 删除 dist, build 目录和 .egg-info 文件
+    
+    - name: 📦 构建包  # 构建 Python 包(生成 .whl 和 .tar.gz 文件)
+      run: python -m build  # 使用 build 模块构建包,会在 dist/ 目录生成文件
+    
+    - name: 🔍 验证包  # 验证构建的包是否符合 PyPI 规范
+      run: twine check dist/*  # 使用 twine 检查 dist 目录下的所有包文件
+    
+    - name: 🧪 测试安装  # 在虚拟环境中测试包是否能正常安装和导入
+      run: |  # 运行多行命令
+        python -m venv test_env  # 创建一个临时虚拟环境
+        source test_env/bin/activate  # 激活虚拟环境
+        pip install dist/*.whl  # 安装刚构建的 wheel 包
+        python -c "from experiment_manager.core import Experiment; print('✅ 导入测试通过')"  # 测试是否能成功导入主要模块
+        deactivate  # 退出虚拟环境
+        rm -rf test_env  # 删除临时虚拟环境
+    
+    - name: 🚀 发布到 PyPI  # 将包上传到 PyPI(Python Package Index)
+      env:  # 设置环境变量
+        TWINE_USERNAME: __token__  # PyPI 使用 token 认证时,用户名固定为 __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}  # 从 GitHub Secrets 中获取 PyPI API Token
+      run: twine upload dist/*  # 使用 twine 上传 dist 目录下的所有包文件到 PyPI
