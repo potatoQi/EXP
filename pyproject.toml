@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xpriment"
-version = "0.0.1"
+version = "0.0.2"
 description = "实验管理框架"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Build Tools"
 ]
-requires-python = ">=3.9"  # 不再支持 Python 3.8
+requires-python = ">=3.9"
 dependencies = [
     "toml>=0.10.2",
     "psutil>=5.8.0",
