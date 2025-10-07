@@ -7,7 +7,7 @@ name = "xpriment"
 version = "0.0.1"
 description = "实验管理框架"
 readme = "README.md"
-license = {text = "Apache-2.0"}  # 修改为新格式:使用字典形式
+license = {text = "Apache-2.0"}
 authors = [
     { name = "potatoQi" }
 ]
@@ -28,11 +28,12 @@ requires-python = ">=3.8"
 dependencies = [
     "toml>=0.10.2",
     "psutil>=5.8.0",
-    "pandas>=1.3.0",  # 添加 pandas 依赖
+    "pandas>=1.3.0",
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.23.0",
     "websockets>=12.0",
     "lark-oapi>=1.0.30",
+    "backports.zoneinfo>=0.2.1;python_version<'3.9'",  # Python 3.8 需要 zoneinfo backport
 ]
 
 [tool.setuptools.packages.find]
