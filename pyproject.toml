@@ -7,8 +7,7 @@ name = "xpriment"
 version = "0.0.1"
 description = "实验管理框架"
 readme = "README.md"
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = {text = "Apache-2.0"}  # 修改为新格式:使用字典形式
 authors = [
     { name = "potatoQi" }
 ]
