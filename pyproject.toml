@@ -1,67 +1,126 @@
+# ============================================================================
+# pyproject.toml - Python 项目配置文件
+# ============================================================================
+# 这是 Python 项目的现代化配置文件标准 (PEP 518, PEP 621)
+# 用于替代传统的 setup.py, setup.cfg, requirements.txt 等文件
+# 所有项目配置、依赖、元数据都集中在这一个文件中
+
+
+# ============================================================================
+# [build-system] - 构建系统配置
+# ============================================================================
+# 定义如何构建你的 Python 包(生成 .whl 和 .tar.gz 文件)
 [build-system]
-requires = ["setuptools>=65", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools>=65", "wheel"]  # 构建时需要的工具包:setuptools(打包工具)和 wheel(生成 .whl 格式)
+build-backend = "setuptools.build_meta"  # 指定使用 setuptools 作为构建后端(也可以用 poetry, flit 等)
 
+
+# ============================================================================
+# [project] - 项目元数据
+# ============================================================================
+# 这是项目的核心信息,会显示在 PyPI 上,用户通过这些信息了解你的项目
 [project]
-name = "xpriment"
-version = "0.0.2"
-description = "实验管理框架"
-readme = "README.md"
-license = {text = "Apache-2.0"}
+name = "xpriment"  # 包名,用户通过 pip install xpriment 安装,必须在 PyPI 上唯一
+version = "0.0.2"  # 版本号,遵循语义化版本(major.minor.patch),每次发布必须递增
+description = "轻量 python 实验管理框架"  # 简短描述,一句话说明项目是做什么的
+readme = "README.md"  # README 文件路径,会显示在 PyPI 项目页面上
+license = {text = "Apache-2.0"}  # 开源协议,告诉用户如何使用你的代码(也可以用 {file = "LICENSE"})
+
+# 作者信息列表,可以有多个作者
 authors = [
-    { name = "potatoQi" }
+    { name = "potatoQi" }  # 作者名字(可选添加 email = "your@email.com")
 ]
+
+# 关键词列表,方便用户在 PyPI 上搜索到你的包
 keywords = ["experiment", "scheduler", "machine-learning", "lark", "monitoring"]
+
+# 分类器列表,用于在 PyPI 上分类你的项目
+# 完整列表见: https://pypi.org/classifiers/
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Operating System :: OS Independent",
-    "Intended Audience :: Developers",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Software Development :: Build Tools"
+    "Programming Language :: Python :: 3",  # 支持 Python 3
+    "Programming Language :: Python :: 3.9",  # 明确支持 Python 3.9
+    "Programming Language :: Python :: 3.10",  # 明确支持 Python 3.10
+    "Programming Language :: Python :: 3.11",  # 明确支持 Python 3.11
+    "Programming Language :: Python :: 3.12",  # 明确支持 Python 3.12
+    "Operating System :: OS Independent",  # 跨平台,不限操作系统
+    "Intended Audience :: Developers",  # 目标用户是开发者
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",  # 主题:人工智能
+    "Topic :: Software Development :: Build Tools"  # 主题:开发工具
 ]
-requires-python = ">=3.9"
+
+# Python 版本要求,低于此版本的 Python 无法安装
+requires-python = ">=3.9"  # 最低要求 Python 3.9 或更高版本
+
+# 核心依赖列表,安装你的包时会自动安装这些依赖
 dependencies = [
-    "toml>=0.10.2",
-    "psutil>=5.8.0",
-    "pandas>=1.3.0",
-    "fastapi>=0.111.0",
-    "uvicorn[standard]>=0.23.0",
-    "websockets>=12.0",
-    "lark-oapi>=1.0.30",
+    "toml>=0.10.2",  # TOML 文件解析器,用于读取配置文件
+    "psutil>=5.8.0",  # 系统和进程工具,用于监控 CPU、内存、GPU 等
+    "pandas>=1.3.0",  # 数据处理库,用于处理实验数据
+    "fastapi>=0.111.0",  # 现代 Web 框架,用于提供 API 服务
+    "uvicorn[standard]>=0.23.0",  # ASGI 服务器,运行 FastAPI,[standard]表示安装标准版(包含额外功能)
+    "websockets>=12.0",  # WebSocket 库,用于实时通信
+    "lark-oapi>=1.0.30",  # 飞书开放平台 SDK,用于飞书集成
 ]
 
+
+# ============================================================================
+# [tool.setuptools.packages.find] - 包发现配置
+# ============================================================================
+# 告诉 setuptools 哪些目录应该被打包
 [tool.setuptools.packages.find]
-include = ["experiment_manager*"]
-exclude = [
-    "tests*",
-    "toy_example*",
-    "data*",
-    "experiments*",
+include = ["experiment_manager*"]  # 包含 experiment_manager 及其所有子包(* 表示通配符)
+exclude = [  # 排除这些目录,不打包到发布的包中
+    "tests*",  # 测试文件,用户不需要
+    "toy_example*",  # 示例代码,用户不需要
+    "data*",  # 数据文件,通常很大,不适合打包
+    "experiments*",  # 实验结果,不应该打包
 ]
 
+
+# ============================================================================
+# [tool.setuptools.package-data] - 非 Python 文件打包配置
+# ============================================================================
+# 指定哪些非 .py 文件需要打包(如模板、静态文件、配置文件等)
 [tool.setuptools.package-data]
-"experiment_manager.ui" = ["static/**/*"]
+"experiment_manager.ui" = ["static/**/*"]  # 将 experiment_manager/ui/static/ 下的所有文件打包(如 HTML、CSS、JS)
 
+
+# ============================================================================
+# [project.scripts] - 命令行工具配置
+# ============================================================================
+# 定义安装包后可以在命令行直接使用的命令
 [project.scripts]
-EXP = "experiment_manager.ui.cli:main"
+EXP = "experiment_manager.ui.cli:main"  # 用户安装后可以在终端输入 EXP 命令,会执行 experiment_manager.ui.cli 模块的 main 函数
 
+
+# ============================================================================
+# [project.optional-dependencies] - 可选依赖
+# ============================================================================
+# 定义额外的依赖组,用户可以按需安装
+# 例如: pip install xpriment[dev] 会安装核心依赖 + dev 依赖
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23.0",
-    "httpx>=0.27.0",
+dev = [  # 开发环境依赖,用于开发、测试,普通用户不需要
+    "pytest>=8.0",  # 测试框架
+    "pytest-asyncio>=0.23.0",  # pytest 的异步测试插件
+    "httpx>=0.27.0",  # HTTP 客户端,用于测试 API
 ]
 
-[project.urls]
-Homepage = "https://github.com/potatoQi/EXP"
-Repository = "https://github.com/potatoQi/EXP"
-Issues = "https://github.com/potatoQi/EXP/issues"
 
+# ============================================================================
+# [project.urls] - 项目相关链接
+# ============================================================================
+# 这些链接会显示在 PyPI 项目页面上
+[project.urls]
+Homepage = "https://github.com/potatoQi/EXP"  # 项目主页
+Repository = "https://github.com/potatoQi/EXP"  # 代码仓库
+Issues = "https://github.com/potatoQi/EXP/issues"  # 问题追踪页面,用户可以在这里报告 bug
+
+
+# ============================================================================
+# [tool.pytest.ini_options] - pytest 测试配置
+# ============================================================================
+# 配置 pytest 测试框架的行为
 [tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["tests", "toy_example"]
-python_files = ["test_*.py"]
+pythonpath = ["."]  # 将当前目录添加到 Python 路径,这样 pytest 可以找到你的模块
+testpaths = ["tests", "toy_example"]  # pytest 会在这些目录中查找测试文件
+python_files = ["test_*.py"]  # 只运行以 test_ 开头的 Python 文件作为测试
